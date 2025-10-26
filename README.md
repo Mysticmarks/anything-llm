@@ -155,6 +155,18 @@ This monorepo consists of six main sections:
 - `embed`: Submodule for generation & creation of the [web embed widget](https://github.com/Mintplex-Labs/anythingllm-embed).
 - `browser-extension`: Submodule for the [chrome browser extension](https://github.com/Mintplex-Labs/anythingllm-extension).
 
+### Operational health checks
+
+The AnythingLLM server now exposes a lightweight health check at `GET /api/health`.
+The endpoint returns the application status, uptime, semantic version, and the
+result of a database connectivity probe. You can connect load balancers,
+container orchestrators, or uptime monitors to this URL to gate traffic on
+actual service availability. A `200 OK` response indicates that the API is
+responsive and can communicate with the backing database; a `503 Service
+Unavailable` response means the server is running but cannot reach the
+database, which is a strong signal for operators to investigate before the
+instance begins serving traffic again.
+
 ## 🛳 Self-Hosting
 
 Mintplex Labs & the community maintain a number of deployment methods, scripts, and templates that you can use to run AnythingLLM locally. Refer to the table below to read how to deploy on your preferred environment or to automatically deploy.
