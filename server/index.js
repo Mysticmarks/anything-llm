@@ -8,6 +8,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
 const { reqBody } = require("./utils/http");
+const { healthEndpoints } = require("./endpoints/health");
 const { systemEndpoints } = require("./endpoints/system");
 const { workspaceEndpoints } = require("./endpoints/workspaces");
 const { chatEndpoints } = require("./endpoints/chat");
@@ -63,6 +64,7 @@ if (!!process.env.ENABLE_HTTPS) {
 
 app.use("/api", apiRouter);
 systemEndpoints(apiRouter);
+healthEndpoints(apiRouter);
 extensionEndpoints(apiRouter);
 workspaceEndpoints(apiRouter);
 workspaceThreadEndpoints(apiRouter);
