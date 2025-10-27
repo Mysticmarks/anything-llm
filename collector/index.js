@@ -45,20 +45,13 @@ if (
   !!process.env.ENABLE_HTTP_LOGGER
 ) {
   app.use(
-    httpLogger({
-      enableTimestamps: !!process.env.ENABLE_HTTP_LOGGER_TIMESTAMPS,
+    bodyParser.text({ limit: FILE_LIMIT }),
+    bodyParser.json({ limit: FILE_LIMIT }),
+    bodyParser.urlencoded({
+      limit: FILE_LIMIT,
+      extended: true,
     })
   );
-}
-app.use(cors({ origin: true }));
-app.use(
-  bodyParser.text({ limit: FILE_LIMIT }),
-  bodyParser.json({ limit: FILE_LIMIT }),
-  bodyParser.urlencoded({
-    limit: FILE_LIMIT,
-    extended: true,
-  })
-);
 
 app.post(
   "/process",
@@ -86,9 +79,7 @@ app.post(
         documents: [],
       });
     }
-    return;
-  }
-);
+  );
 
 app.post(
   "/parse",
@@ -124,9 +115,7 @@ app.post(
         documents: [],
       });
     }
-    return;
-  }
-);
+  );
 
 app.post(
   "/process-link",
@@ -149,9 +138,7 @@ app.post(
         documents: [],
       });
     }
-    return;
-  }
-);
+  );
 
 app.post(
   "/util/get-link",
@@ -173,9 +160,7 @@ app.post(
         content: null,
       });
     }
-    return;
-  }
-);
+  );
 
 app.post(
   "/process-raw-text",
@@ -200,30 +185,78 @@ app.post(
         documents: [],
       });
     }
-    return;
-  }
-);
+  );
 
-extensions(app);
+  extensions(app);
 
-app.get("/accepts", function (_, response) {
-  response.status(200).json(ACCEPTED_MIMES);
-});
-
-app.all("*", function (_, response) {
-  response.sendStatus(200);
-});
-
-app
-  .listen(8888, async () => {
-    await wipeCollectorStorage();
-    console.log(`Document processor app listening on port 8888`);
-  })
-  .on("error", function (_) {
-    process.once("SIGUSR2", function () {
-      process.kill(process.pid, "SIGUSR2");
-    });
-    process.on("SIGINT", function () {
-      process.kill(process.pid, "SIGINT");
-    });
+  app.get("/accepts", function (_, response) {
+    response.status(200).json(ACCEPTED_MIMES);
   });
+
+  app.all("*", function (_, response) {
+    response.sendStatus(200);
+  });
+
+  const port = Number(process.env.COLLECTOR_PORT || 8888);
+  app
+    .listen(port, async () => {
+      await wipeCollectorStorage();
+      console.log(`Document processor app listening on port ${port}`);
+    })
+    .on("error", function (_) {
+      process.once("SIGUSR2", function () {
+        process.kill(process.pid, "SIGUSR2");
+      });
+      process.on("SIGINT", function () {
+        process.kill(process.pid, "SIGINT");
+      });
+    });
+};
+
+const supervise = () => {
+  const forkWorker = () => {
+    const worker = cluster.fork();
+    worker.on("exit", (code, signal) => {
+      const exitCode = code ?? 0;
+      const reason = signal ? `${signal}` : `${exitCode}`;
+      console.warn(`Collector worker ${worker.process.pid} exited with ${reason}`);
+    });
+    return worker;
+  };
+
+  for (let i = 0; i < workerTarget; i += 1) {
+    forkWorker();
+  }
+
+  cluster.on("exit", (worker, code, signal) => {
+    if (worker.exitedAfterDisconnect) return;
+    const exitCode = code ?? 0;
+    const reason = signal ? `${signal}` : `${exitCode}`;
+    console.warn(
+      `Collector worker ${worker.process.pid} crashed (${reason}). Restarting in ${restartDelay}ms.`
+    );
+    setTimeout(() => {
+      forkWorker();
+    }, restartDelay);
+  });
+
+  const shutdown = (signal) => {
+    console.log(`Received ${signal}. Shutting down collector cluster.`);
+    for (const id of Object.keys(cluster.workers)) {
+      const worker = cluster.workers[id];
+      if (worker?.isConnected()) {
+        worker.process.kill(signal);
+      }
+    }
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+};
+
+if (SHOULD_SUPERVISE && cluster.isPrimary) {
+  supervise();
+} else {
+  bootCollector();
+}

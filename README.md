@@ -188,6 +188,16 @@ Mintplex Labs & the community maintain a number of deployment methods, scripts, 
 - `yarn dev:frontend` To boot the frontend locally (from root of repo).
 - `yarn dev:collector` To then run the document collector (from root of repo).
 
+### Production runtime (single command)
+
+When you're ready to run the full stack with production builds and restart-safe Node services, use the new process manager:
+
+- `yarn prod:all` builds the frontend, starts the web preview, and boots both the API server and collector together. The server and collector run under a clustered supervisor that automatically respawns workers after crashes.
+- `yarn prod:frontend` runs just the production frontend build + preview server. Use this if you only need the UI.
+- `yarn prod:server` / `yarn prod:collector` continue to start the individual services if you prefer to manage them separately.
+
+The production launcher honours `FRONTEND_HOST`, `FRONTEND_PORT`, and `SKIP_FRONTEND_BUILD` environment variables. You can also tune the new supervisors with `SERVER_SUPERVISOR_*` and `COLLECTOR_SUPERVISOR_*` options described in the Docker environment template.
+
 [Learn about documents](./server/storage/documents/DOCUMENTS.md)
 
 [Learn about vector caching](./server/storage/vector-cache/VECTOR_CACHE.md)
