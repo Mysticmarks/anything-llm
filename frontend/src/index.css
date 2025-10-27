@@ -6,6 +6,15 @@
   -webkit-font-smoothing: antialiased;
 }
 
+html {
+  font-family: var(--theme-font-family);
+  font-size: calc(16px * var(--theme-font-scale));
+}
+
+body {
+  font-family: var(--theme-font-family);
+}
+
 :root {
   /* Default theme */
   --theme-loader: #ffffff;
@@ -103,6 +112,12 @@
   --theme-button-disable-hover-bg: #3a3128;
   --theme-button-delete-hover-text: #f97066;
   --theme-button-delete-hover-bg: #37282b;
+  --theme-font-scale: 1;
+  --theme-font-family: plus-jakarta-sans, ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif;
+  --theme-density-factor: 1;
+  --theme-animation-multiplier: 1;
 }
 
 [data-theme="light"] {
@@ -205,6 +220,12 @@
   --theme-button-disable-hover-bg: #fef7e6;
   --theme-button-delete-hover-text: #b42318;
   --theme-button-delete-hover-bg: #fee4e2;
+  --theme-font-scale: 1;
+  --theme-font-family: "Inter", plus-jakarta-sans, ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif;
+  --theme-density-factor: 1;
+  --theme-animation-multiplier: 1;
 }
 
 [data-theme="light"] .text-white {

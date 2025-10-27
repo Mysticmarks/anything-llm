@@ -1,13 +1,23 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { TextT } from "@phosphor-icons/react";
 import { Tooltip } from "react-tooltip";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/hooks/useTheme";
+import { motion } from "framer-motion";
 
 export default function TextSizeButton() {
   const tooltipRef = useRef(null);
   const { t } = useTranslation();
-  const { theme } = useTheme();
+  const { themeMode, animationMultiplier } = useTheme();
+
+  const motionInteractions = useMemo(() => {
+    if (!animationMultiplier) return {};
+    return {
+      whileHover: { scale: 1.05 },
+      whileTap: { scale: 0.95 },
+      transition: { duration: 0.18 * animationMultiplier, ease: "easeOut" },
+    };
+  }, [animationMultiplier]);
 
   const toggleTooltip = () => {
     if (!tooltipRef.current) return;
@@ -18,19 +28,21 @@ export default function TextSizeButton() {
 
   return (
     <>
-      <div
+      <motion.button
         id="text-size-btn"
         data-tooltip-id="tooltip-text-size-btn"
         aria-label={t("chat_window.text_size")}
+        type="button"
         onClick={toggleTooltip}
-        className="border-none flex justify-center items-center opacity-60 hover:opacity-100 light:opacity-100 light:hover:opacity-60 cursor-pointer"
+        className="border-none flex justify-center items-center rounded-md opacity-60 hover:opacity-100 light:opacity-100 light:hover:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-button-primary"
+        {...motionInteractions}
       >
         <TextT
           color="var(--theme-sidebar-footer-icon-fill)"
           weight="fill"
           className="w-[22px] h-[22px] pointer-events-none text-white"
         />
-      </div>
+      </motion.button>
       <Tooltip
         ref={tooltipRef}
         id="tooltip-text-size-btn"
@@ -40,7 +52,7 @@ export default function TextSizeButton() {
         delayShow={300}
         delayHide={800}
         arrowColor={
-          theme === "light"
+          themeMode === "light"
             ? "var(--theme-modal-border)"
             : "var(--theme-bg-primary)"
         }

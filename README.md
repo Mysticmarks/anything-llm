@@ -57,6 +57,7 @@ AnythingLLM divides your documents into objects called `workspaces`. A Workspace
 
 - 🆕 [**Full MCP-compatibility**](https://docs.anythingllm.com/mcp-compatibility/overview)
 - 🆕 [**No-code AI Agent builder**](https://docs.anythingllm.com/agent-flows/overview)
+- 🎨 Per-user Theme Studio with dynamic palettes, typography, motion, and density controls
 - 🖼️ **Multi-modal support (both closed and open-source LLMs!)**
 - [**Custom AI Agents**](https://docs.anythingllm.com/agent/custom/introduction)
 - 👤 Multi-user instance support and permissioning _Docker version only_
@@ -154,6 +155,10 @@ This monorepo consists of six main sections:
 - `docker`: Docker instructions and build process + information for building from source.
 - `embed`: Submodule for generation & creation of the [web embed widget](https://github.com/Mintplex-Labs/anythingllm-embed).
 - `browser-extension`: Submodule for the [chrome browser extension](https://github.com/Mintplex-Labs/anythingllm-extension).
+
+### Theme Studio & UI Personalization
+
+AnythingLLM ships with a dedicated Theme Studio (Settings → Customization → Theme Studio) that lets each user tailor the interface to their brand. The studio is backed by the dynamic `useTheme` hook, which exposes HSV palette controls, typography and density settings, and animation preferences. Updates are written to CSS custom properties in real time so the rest of the application—including chat and dashboard micro-interactions—reflects changes instantly. Preferences are persisted via the `Appearance` API model, ensuring users keep their personalized experience across sessions.
 
 ### Operational health checks
 
