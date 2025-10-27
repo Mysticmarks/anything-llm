@@ -90,6 +90,33 @@ The core library is written in Node.js. There are additional sub-repositories fo
 * `frontend`: React frontend source code
 * `collector`: Python collector source code
 
+## Service boundaries
+
+AnythingLLM ships as three cooperating services that must stay version-locked:
+
+* **API server (`server/`)** – Owns the REST and websocket interfaces, database access via Prisma, and long-running background jobs. Public APIs should remain backwards compatible within a minor release.
+* **Frontend (`frontend/`)** – Ships as a static React bundle compiled with `yarn prod:frontend`. UI changes must preserve API contracts and reflect responsive, accessible layouts.
+* **Collector (`collector/`)** – Runs ingestion and embedding workflows. It communicates with the API server through authenticated requests and should not introduce service-specific business logic.
+
+Pull requests that modify more than one boundary must describe the coordination plan (migrations, rollout order, and backward compatibility strategy) in the summary.
+
+## Performance budgets
+
+We enforce baseline performance guardrails to protect production deployments:
+
+* **API latency:** 95th percentile responses must stay under 500ms for documented endpoints under the standard load test profile. Include benchmarks for regressions or new features that risk exceeding this threshold.
+* **Frontend build size:** The main bundle should remain below 300KB gzipped. If a change exceeds the limit, document the mitigation (code splitting, tree shaking) in the pull request.
+* **Background jobs:** Collector tasks should complete within their configured visibility timeout. Long-running jobs require progress heartbeats and cancellation hooks.
+
+## UI and UX expectations
+
+Product polish matters. When touching the UI, confirm the following before requesting review:
+
+* **Animation guidelines:** Provide motion-reduced fallbacks for animated interactions. Prefer CSS transitions under 300ms to maintain responsiveness.
+* **Accessibility:** Validate keyboard navigation, focus states, and color contrast. When possible, run automated tooling (such as axe) against affected views.
+* **Localization:** String changes must pass `yarn verify:translations` and include default translations.
+* **Design consistency:** Reference the design system components already present in `frontend/`. Introduce new primitives only after design review.
+
 ## Release process
 
 Changes to the core AnythingLLM project are released through the `master` branch. When a PR is merged into `master`, a new version of the package is published to Docker and GitHub Container Registry under the `latest` tag.
@@ -99,6 +126,8 @@ When a new version is released, the following steps are taken a new image is bui
 ### Desktop propogation
 
 Changes to the desktop app are downstream of the core AnythingLLM project. Releases of the desktop app are published at the same time as the core AnythingLLM project. Code from the core AnythingLLM project is copied into the desktop app into an Electron wrapper. The Electron wrapper that wraps around the core AnythingLLM project is **not** part of the core AnythingLLM project, but is maintained by the AnythingLLM team.
+
+For detailed deployment guardrails, consult the [Production Release Checklist](./docs/release/production-checklist.md) and the [Troubleshooting Runbook](./docs/runbooks/troubleshooting.md).
 
 ## License
 

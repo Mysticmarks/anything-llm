@@ -2,54 +2,48 @@ process.env.NODE_ENV === "development"
   ? require("dotenv").config({ path: `.env.${process.env.NODE_ENV}` })
   : require("dotenv").config();
 
-const cluster = require("node:cluster");
-const os = require("node:os");
+require("./utils/logger")();
+require("./jobs").boot();
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const path = require("path");
+const { ACCEPTED_MIMES } = require("./utils/constants");
+const { reqBody } = require("./utils/http");
+const { processSingleFile } = require("./processSingleFile");
+const { processLink, getLinkText } = require("./processLink");
+const { wipeCollectorStorage } = require("./utils/files");
+const extensions = require("./extensions");
+const { processRawText } = require("./processRawText");
+const { verifyPayloadIntegrity } = require("./middleware/verifyIntegrity");
+const { httpLogger } = require("./middleware/httpLogger");
+const { enqueueProcessingJob, getQueueEvents } = require("./utils/queue");
+const app = express();
+const FILE_LIMIT = "3GB";
 
-const SHOULD_SUPERVISE =
-  process.env.NODE_ENV === "production" &&
-  process.env.COLLECTOR_SUPERVISOR !== "disabled" &&
-  process.env.COLLECTOR_SUPERVISOR !== "off";
-
-const restartDelay = Number(
-  process.env.COLLECTOR_SUPERVISOR_RESTART_DELAY_MS || 4000
-);
-const workerTarget = Math.max(
-  1,
-  Number(process.env.COLLECTOR_SUPERVISOR_WORKERS || 1) ||
-    os.availableParallelism?.() ||
-    os.cpus().length ||
-    1
-);
-
-const bootCollector = () => {
-  require("./utils/logger")();
-  const express = require("express");
-  const bodyParser = require("body-parser");
-  const cors = require("cors");
-  const path = require("path");
-  const { ACCEPTED_MIMES } = require("./utils/constants");
-  const { reqBody } = require("./utils/http");
-  const { processSingleFile } = require("./processSingleFile");
-  const { processLink, getLinkText } = require("./processLink");
-  const { wipeCollectorStorage } = require("./utils/files");
-  const extensions = require("./extensions");
-  const { processRawText } = require("./processRawText");
-  const { verifyPayloadIntegrity } = require("./middleware/verifyIntegrity");
-  const { httpLogger } = require("./middleware/httpLogger");
-  const app = express();
-  const FILE_LIMIT = "3GB";
-
-  if (
-    process.env.NODE_ENV === "development" &&
-    !!process.env.ENABLE_HTTP_LOGGER
-  ) {
-    app.use(
-      httpLogger({
-        enableTimestamps: !!process.env.ENABLE_HTTP_LOGGER_TIMESTAMPS,
-      })
+async function runProcessingJob(jobName, payload, fallback) {
+  try {
+    const job = await enqueueProcessingJob(jobName, payload);
+    if (job) {
+      const events = await getQueueEvents();
+      if (events) {
+        return await job.waitUntilFinished(events);
+      }
+    }
+  } catch (error) {
+    console.error(
+      `\x1b[33m[CollectorQueue]\x1b[0m Fallback triggered for ${jobName}: ${error?.message}`
     );
   }
-  app.use(cors({ origin: true }));
+
+  return fallback();
+}
+
+// Only log HTTP requests in development mode and if the ENABLE_HTTP_LOGGER environment variable is set to true
+if (
+  process.env.NODE_ENV === "development" &&
+  !!process.env.ENABLE_HTTP_LOGGER
+) {
   app.use(
     bodyParser.text({ limit: FILE_LIMIT }),
     bodyParser.json({ limit: FILE_LIMIT }),
@@ -59,138 +53,137 @@ const bootCollector = () => {
     })
   );
 
-  app.post(
-    "/process",
-    [verifyPayloadIntegrity],
-    async function (request, response) {
-      const { filename, options = {}, metadata = {} } = reqBody(request);
-      try {
-        const targetFilename = path
-          .normalize(filename)
-          .replace(/^(\.\.(\/|\\|$))+/, "");
-        const {
-          success,
-          reason,
-          documents = [],
-        } = await processSingleFile(targetFilename, options, metadata);
-        response
-          .status(200)
-          .json({ filename: targetFilename, success, reason, documents });
-      } catch (e) {
-        console.error(e);
-        response.status(200).json({
-          filename: filename,
-          success: false,
-          reason: "A processing error occurred.",
-          documents: [],
-        });
-      }
-      return;
+app.post(
+  "/process",
+  [verifyPayloadIntegrity],
+  async function (request, response) {
+    const { filename, options = {}, metadata = {} } = reqBody(request);
+    try {
+      const targetFilename = path
+        .normalize(filename)
+        .replace(/^(\.\.(\/|\\|$))+/, "");
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-file",
+        { filename: targetFilename, options, metadata },
+        () => processSingleFile(targetFilename, options, metadata)
+      );
+      response
+        .status(200)
+        .json({ filename: targetFilename, success, reason, documents });
+    } catch (e) {
+      console.error(e);
+      response.status(200).json({
+        filename: filename,
+        success: false,
+        reason: "A processing error occurred.",
+        documents: [],
+      });
     }
   );
 
-  app.post(
-    "/parse",
-    [verifyPayloadIntegrity],
-    async function (request, response) {
-      const { filename, options = {} } = reqBody(request);
-      try {
-        const targetFilename = path
-          .normalize(filename)
-          .replace(/^(\.\.(\/|\\|$))+/, "");
-        const {
-          success,
-          reason,
-          documents = [],
-        } = await processSingleFile(targetFilename, {
-          ...options,
-          parseOnly: true,
-        });
-        response
-          .status(200)
-          .json({ filename: targetFilename, success, reason, documents });
-      } catch (e) {
-        console.error(e);
-        response.status(200).json({
-          filename: filename,
-          success: false,
-          reason: "A processing error occurred.",
-          documents: [],
-        });
-      }
-      return;
+app.post(
+  "/parse",
+  [verifyPayloadIntegrity],
+  async function (request, response) {
+    const { filename, options = {} } = reqBody(request);
+    try {
+      const targetFilename = path
+        .normalize(filename)
+        .replace(/^(\.\.(\/|\\|$))+/, "");
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "parse-file",
+        {
+          filename: targetFilename,
+          options: { ...options, parseOnly: true },
+          metadata: {},
+        },
+        () =>
+          processSingleFile(targetFilename, {
+            ...options,
+            parseOnly: true,
+          })
+      );
+      response
+        .status(200)
+        .json({ filename: targetFilename, success, reason, documents });
+    } catch (e) {
+      console.error(e);
+      response.status(200).json({
+        filename: filename,
+        success: false,
+        reason: "A processing error occurred.",
+        documents: [],
+      });
     }
   );
 
-  app.post(
-    "/process-link",
-    [verifyPayloadIntegrity],
-    async function (request, response) {
-      const { link, scraperHeaders = {}, metadata = {} } = reqBody(request);
-      try {
-        const {
-          success,
-          reason,
-          documents = [],
-        } = await processLink(link, scraperHeaders, metadata);
-        response.status(200).json({ url: link, success, reason, documents });
-      } catch (e) {
-        console.error(e);
-        response.status(200).json({
-          url: link,
-          success: false,
-          reason: "A processing error occurred.",
-          documents: [],
-        });
-      }
-      return;
+app.post(
+  "/process-link",
+  [verifyPayloadIntegrity],
+  async function (request, response) {
+    const { link, scraperHeaders = {}, metadata = {} } = reqBody(request);
+    try {
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-link",
+        { link, scraperHeaders, metadata },
+        () => processLink(link, scraperHeaders, metadata)
+      );
+      response.status(200).json({ url: link, success, reason, documents });
+    } catch (e) {
+      console.error(e);
+      response.status(200).json({
+        url: link,
+        success: false,
+        reason: "A processing error occurred.",
+        documents: [],
+      });
     }
   );
 
-  app.post(
-    "/util/get-link",
-    [verifyPayloadIntegrity],
-    async function (request, response) {
-      const { link, captureAs = "text" } = reqBody(request);
-      try {
-        const { success, content = null } = await getLinkText(link, captureAs);
-        response.status(200).json({ url: link, success, content });
-      } catch (e) {
-        console.error(e);
-        response.status(200).json({
-          url: link,
-          success: false,
-          content: null,
-        });
-      }
-      return;
+app.post(
+  "/util/get-link",
+  [verifyPayloadIntegrity],
+  async function (request, response) {
+    const { link, captureAs = "text" } = reqBody(request);
+    try {
+      const { success, content = null } = await runProcessingJob(
+        "fetch-link",
+        { link, captureAs },
+        () => getLinkText(link, captureAs)
+      );
+      response.status(200).json({ url: link, success, content });
+    } catch (e) {
+      console.error(e);
+      response.status(200).json({
+        url: link,
+        success: false,
+        content: null,
+      });
     }
   );
 
-  app.post(
-    "/process-raw-text",
-    [verifyPayloadIntegrity],
-    async function (request, response) {
-      const { textContent, metadata } = reqBody(request);
-      try {
-        const {
-          success,
-          reason,
-          documents = [],
-        } = await processRawText(textContent, metadata);
-        response
-          .status(200)
-          .json({ filename: metadata.title, success, reason, documents });
-      } catch (e) {
-        console.error(e);
-        response.status(200).json({
-          filename: metadata?.title || "Unknown-doc.txt",
-          success: false,
-          reason: "A processing error occurred.",
-          documents: [],
-        });
-      }
-      return;
+app.post(
+  "/process-raw-text",
+  [verifyPayloadIntegrity],
+  async function (request, response) {
+    const { textContent, metadata } = reqBody(request);
+    try {
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-raw-text",
+        { textContent, metadata },
+        () => processRawText(textContent, metadata)
+      );
+      response
+        .status(200)
+        .json({ filename: metadata.title, success, reason, documents });
+    } catch (e) {
+      console.error(e);
+      response.status(200).json({
+        filename: metadata?.title || "Unknown-doc.txt",
+        success: false,
+        reason: "A processing error occurred.",
+        documents: [],
+      });
     }
   );
 

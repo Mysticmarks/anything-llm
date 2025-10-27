@@ -2,18 +2,60 @@ process.env.NODE_ENV === "development"
   ? require("dotenv").config({ path: `.env.${process.env.NODE_ENV}` })
   : require("dotenv").config();
 
-const cluster = require("node:cluster");
-const os = require("node:os");
+require("./utils/logger")();
+require("./jobs").boot();
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const path = require("path");
+const { reqBody } = require("./utils/http");
+const { healthEndpoints } = require("./endpoints/health");
+const { systemEndpoints } = require("./endpoints/system");
+const { workspaceEndpoints } = require("./endpoints/workspaces");
+const { chatEndpoints } = require("./endpoints/chat");
+const { embeddedEndpoints } = require("./endpoints/embed");
+const { embedManagementEndpoints } = require("./endpoints/embedManagement");
+const { getVectorDbClass } = require("./utils/helpers");
+const { adminEndpoints } = require("./endpoints/admin");
+const { inviteEndpoints } = require("./endpoints/invite");
+const { utilEndpoints } = require("./endpoints/utils");
+const { developerEndpoints } = require("./endpoints/api");
+const { extensionEndpoints } = require("./endpoints/extensions");
+const { bootHTTP, bootSSL } = require("./utils/boot");
+const { workspaceThreadEndpoints } = require("./endpoints/workspaceThreads");
+const { documentEndpoints } = require("./endpoints/document");
+const { agentWebsocket } = require("./endpoints/agentWebsocket");
+const { experimentalEndpoints } = require("./endpoints/experimental");
+const { browserExtensionEndpoints } = require("./endpoints/browserExtension");
+const { communityHubEndpoints } = require("./endpoints/communityHub");
+const { agentFlowEndpoints } = require("./endpoints/agentFlows");
+const { mcpServersEndpoints } = require("./endpoints/mcpServers");
+const { mobileEndpoints } = require("./endpoints/mobile");
+const { metricsEndpoints } = require("./endpoints/metrics");
+const { httpLogger } = require("./middleware/httpLogger");
+const app = express();
+const apiRouter = express.Router();
+const FILE_LIMIT = "3GB";
 
-const SHOULD_SUPERVISE =
-  process.env.NODE_ENV === "production" &&
-  process.env.SERVER_SUPERVISOR !== "disabled" &&
-  process.env.SERVER_SUPERVISOR !== "off";
-
-const restartDelay = Number(process.env.SERVER_SUPERVISOR_RESTART_DELAY_MS || 4000);
-const workerTarget = Math.max(
-  1,
-  Number(process.env.SERVER_SUPERVISOR_WORKERS || 1) || os.availableParallelism?.() || os.cpus().length || 1
+// Only log HTTP requests in development mode and if the ENABLE_HTTP_LOGGER environment variable is set to true
+if (
+  process.env.NODE_ENV === "development" &&
+  !!process.env.ENABLE_HTTP_LOGGER
+) {
+  app.use(
+    httpLogger({
+      enableTimestamps: !!process.env.ENABLE_HTTP_LOGGER_TIMESTAMPS,
+    })
+  );
+}
+app.use(cors({ origin: true }));
+app.use(bodyParser.text({ limit: FILE_LIMIT }));
+app.use(bodyParser.json({ limit: FILE_LIMIT }));
+app.use(
+  bodyParser.urlencoded({
+    limit: FILE_LIMIT,
+    extended: true,
+  })
 );
 
 const bootServer = () => {
@@ -47,9 +89,36 @@ const bootServer = () => {
   const { mobileEndpoints } = require("./endpoints/mobile");
   const { httpLogger } = require("./middleware/httpLogger");
 
-  const app = express();
-  const apiRouter = express.Router();
-  const FILE_LIMIT = "3GB";
+app.use("/api", apiRouter);
+systemEndpoints(apiRouter);
+healthEndpoints(apiRouter);
+extensionEndpoints(apiRouter);
+workspaceEndpoints(apiRouter);
+workspaceThreadEndpoints(apiRouter);
+chatEndpoints(apiRouter);
+adminEndpoints(apiRouter);
+inviteEndpoints(apiRouter);
+embedManagementEndpoints(apiRouter);
+utilEndpoints(apiRouter);
+documentEndpoints(apiRouter);
+agentWebsocket(apiRouter);
+experimentalEndpoints(apiRouter);
+developerEndpoints(app, apiRouter);
+communityHubEndpoints(apiRouter);
+agentFlowEndpoints(apiRouter);
+mcpServersEndpoints(apiRouter);
+mobileEndpoints(apiRouter);
+metricsEndpoints(apiRouter);
+
+// Externally facing embedder endpoints
+embeddedEndpoints(apiRouter);
+
+// Externally facing browser extension endpoints
+browserExtensionEndpoints(apiRouter);
+
+if (process.env.NODE_ENV !== "development") {
+  const { MetaGenerator } = require("./utils/boot/MetaGenerator");
+  const IndexPage = new MetaGenerator();
 
   if (
     process.env.NODE_ENV === "development" &&
