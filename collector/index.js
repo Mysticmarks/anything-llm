@@ -3,6 +3,7 @@ process.env.NODE_ENV === "development"
   : require("dotenv").config();
 
 require("./utils/logger")();
+require("./jobs").boot();
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -16,8 +17,27 @@ const extensions = require("./extensions");
 const { processRawText } = require("./processRawText");
 const { verifyPayloadIntegrity } = require("./middleware/verifyIntegrity");
 const { httpLogger } = require("./middleware/httpLogger");
+const { enqueueProcessingJob, getQueueEvents } = require("./utils/queue");
 const app = express();
 const FILE_LIMIT = "3GB";
+
+async function runProcessingJob(jobName, payload, fallback) {
+  try {
+    const job = await enqueueProcessingJob(jobName, payload);
+    if (job) {
+      const events = await getQueueEvents();
+      if (events) {
+        return await job.waitUntilFinished(events);
+      }
+    }
+  } catch (error) {
+    console.error(
+      `\x1b[33m[CollectorQueue]\x1b[0m Fallback triggered for ${jobName}: ${error?.message}`
+    );
+  }
+
+  return fallback();
+}
 
 // Only log HTTP requests in development mode and if the ENABLE_HTTP_LOGGER environment variable is set to true
 if (
@@ -49,11 +69,11 @@ app.post(
       const targetFilename = path
         .normalize(filename)
         .replace(/^(\.\.(\/|\\|$))+/, "");
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processSingleFile(targetFilename, options, metadata);
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-file",
+        { filename: targetFilename, options, metadata },
+        () => processSingleFile(targetFilename, options, metadata)
+      );
       response
         .status(200)
         .json({ filename: targetFilename, success, reason, documents });
@@ -79,14 +99,19 @@ app.post(
       const targetFilename = path
         .normalize(filename)
         .replace(/^(\.\.(\/|\\|$))+/, "");
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processSingleFile(targetFilename, {
-        ...options,
-        parseOnly: true,
-      });
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "parse-file",
+        {
+          filename: targetFilename,
+          options: { ...options, parseOnly: true },
+          metadata: {},
+        },
+        () =>
+          processSingleFile(targetFilename, {
+            ...options,
+            parseOnly: true,
+          })
+      );
       response
         .status(200)
         .json({ filename: targetFilename, success, reason, documents });
@@ -109,11 +134,11 @@ app.post(
   async function (request, response) {
     const { link, scraperHeaders = {}, metadata = {} } = reqBody(request);
     try {
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processLink(link, scraperHeaders, metadata);
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-link",
+        { link, scraperHeaders, metadata },
+        () => processLink(link, scraperHeaders, metadata)
+      );
       response.status(200).json({ url: link, success, reason, documents });
     } catch (e) {
       console.error(e);
@@ -134,7 +159,11 @@ app.post(
   async function (request, response) {
     const { link, captureAs = "text" } = reqBody(request);
     try {
-      const { success, content = null } = await getLinkText(link, captureAs);
+      const { success, content = null } = await runProcessingJob(
+        "fetch-link",
+        { link, captureAs },
+        () => getLinkText(link, captureAs)
+      );
       response.status(200).json({ url: link, success, content });
     } catch (e) {
       console.error(e);
@@ -154,11 +183,11 @@ app.post(
   async function (request, response) {
     const { textContent, metadata } = reqBody(request);
     try {
-      const {
-        success,
-        reason,
-        documents = [],
-      } = await processRawText(textContent, metadata);
+      const { success, reason, documents = [] } = await runProcessingJob(
+        "process-raw-text",
+        { textContent, metadata },
+        () => processRawText(textContent, metadata)
+      );
       response
         .status(200)
         .json({ filename: metadata.title, success, reason, documents });
