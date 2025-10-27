@@ -54,6 +54,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-collector-
 
+      - name: Cache frontend dependencies
+        id: cache-frontend
+        uses: actions/cache@v3
+        with:
+          path: |
+            frontend/node_modules
+            ~/.cache/yarn
+          key: ${{ runner.os }}-yarn-frontend-${{ hashFiles('frontend/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-frontend-
+
       - name: Install root dependencies
         if: steps.cache-root.outputs.cache-hit != 'true'
         run: yarn install --frozen-lockfile
@@ -66,11 +77,24 @@ jobs:
         if: steps.cache-collector.outputs.cache-hit != 'true'
         run: cd collector && yarn install --frozen-lockfile
 
+      - name: Install frontend dependencies
+        if: steps.cache-frontend.outputs.cache-hit != 'true'
+        run: cd frontend && yarn install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx @playwright/test@1.45.0 install --with-deps
+
       - name: Setup environment and Prisma
         run: yarn setup:envs && yarn prisma:setup
 
       - name: Run test suites
         run: yarn test
+
+      - name: Build frontend for E2E tests
+        run: cd frontend && yarn build
+
+      - name: Run Playwright tests
+        run: cd frontend && yarn test:e2e --reporter=line
 
       - name: Fail job on error
         if: failure()
