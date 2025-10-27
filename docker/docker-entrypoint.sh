@@ -16,12 +16,20 @@ if [ -z "$STORAGE_DIR" ]; then
     echo "================================================================"
 fi
 
-{
-  cd /app/server/ &&
-    npx prisma generate --schema=./prisma/schema.prisma &&
-    npx prisma migrate deploy --schema=./prisma/schema.prisma &&
+cd /app/server/ &&
+  npx prisma generate --schema=./prisma/schema.prisma &&
+  npx prisma migrate deploy --schema=./prisma/schema.prisma
+
+if [ "${USE_STACK_MANAGER:-true}" = "true" ]; then
+  export DISABLE_FRONTEND_PROCESS="${DISABLE_FRONTEND_PROCESS:-true}"
+  export SKIP_FRONTEND_BUILD="${SKIP_FRONTEND_BUILD:-true}"
+  cd /app
+  exec node ./scripts/start-stack.mjs
+else
+  {
     node /app/server/index.js
-} &
-{ node /app/collector/index.js; } &
-wait -n
-exit $?
+  } &
+  { node /app/collector/index.js; } &
+  wait -n
+  exit $?
+fi
