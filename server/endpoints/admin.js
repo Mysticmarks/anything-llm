@@ -536,27 +536,6 @@ function adminEndpoints(app) {
     }
   );
 
-  app.delete(
-    "/admin/delete-api-key/:id",
-    [validatedRequest, strictMultiUserRoleValid([ROLES.admin])],
-    async (request, response) => {
-      try {
-        const { id } = request.params;
-        if (!id || isNaN(Number(id))) return response.sendStatus(400).end();
-        await ApiKey.delete({ id: Number(id) });
-
-        await EventLogs.logEvent(
-          "api_key_deleted",
-          { deletedBy: response.locals?.user?.username },
-          response?.locals?.user?.id
-        );
-        return response.status(200).end();
-      } catch (e) {
-        console.error(e);
-        response.sendStatus(500).end();
-      }
-    }
-  );
 }
 
 module.exports = { adminEndpoints };
