@@ -4,7 +4,7 @@ import { baseHeaders } from "@/utils/request";
 const AgentPlugins = {
   toggleFeature: async function (hubId, active = false) {
     return await fetch(
-      `${API_BASE}/experimental/agent-plugins/${hubId}/toggle`,
+      `${API_BASE}/admin/v1/agent-plugins/${hubId}/toggle`,
       {
         method: "POST",
         headers: baseHeaders(),
@@ -22,7 +22,7 @@ const AgentPlugins = {
   },
   updatePluginConfig: async function (hubId, updates = {}) {
     return await fetch(
-      `${API_BASE}/experimental/agent-plugins/${hubId}/config`,
+      `${API_BASE}/admin/v1/agent-plugins/${hubId}/config`,
       {
         method: "POST",
         headers: baseHeaders(),
@@ -39,7 +39,7 @@ const AgentPlugins = {
       });
   },
   deletePlugin: async function (hubId) {
-    return await fetch(`${API_BASE}/experimental/agent-plugins/${hubId}`, {
+    return await fetch(`${API_BASE}/admin/v1/agent-plugins/${hubId}`, {
       method: "DELETE",
       headers: baseHeaders(),
     })
