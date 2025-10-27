@@ -19,7 +19,13 @@ function liveSyncEndpoints(app) {
 
   app.post(
     "/experimental/toggle-live-sync",
-    [validatedRequest, flexUserRoleValid([ROLES.admin])],
+    [
+      validatedRequest,
+      flexUserRoleValid([ROLES.admin]),
+      featureFlagEnabled(DocumentSyncQueue.featureKey, {
+        allowWhenDisabled: true,
+      }),
+    ],
     async (request, response) => {
       try {
         const { updatedStatus = false } = reqBody(request);

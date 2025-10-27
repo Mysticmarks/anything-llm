@@ -2,7 +2,7 @@ import { API_BASE, AUTH_TIMESTAMP, fullApiUrl } from "@/utils/constants";
 import { baseHeaders, safeJsonParse } from "@/utils/request";
 import DataConnector from "./dataConnector";
 import LiveDocumentSync from "./experimental/liveSync";
-import AgentPlugins from "./experimental/agentPlugins";
+import AgentPlugins from "./agentPlugins";
 import SystemPromptVariable from "./systemPromptVariable";
 
 const System = {
@@ -792,9 +792,9 @@ const System = {
       });
   },
 
+  agentPlugins: AgentPlugins,
   experimentalFeatures: {
     liveSync: LiveDocumentSync,
-    agentPlugins: AgentPlugins,
   },
   promptVariables: SystemPromptVariable,
 };

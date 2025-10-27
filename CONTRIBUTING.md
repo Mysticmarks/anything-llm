@@ -60,7 +60,7 @@ Next, run:
 ```bash
 yarn dev:all
 ```
-This will start the server, frontend, and collector in development mode. Changes to the code will be hot reloaded.
+This will start the server, frontend, and Node.js collector service in development mode. Changes to the code will be hot reloaded. Read more about the collector runtime in [collector/README.md](./collector/README.md).
 
 ## Best practices for pull requests
 
@@ -88,7 +88,7 @@ The core library is written in Node.js. There are additional sub-repositories fo
 
 * `server`: Node.js server source code
 * `frontend`: React frontend source code
-* `collector`: Python collector source code
+* `collector`: Node.js service that handles document ingestion ([setup guide](./collector/README.md))
 
 ## Release process
 

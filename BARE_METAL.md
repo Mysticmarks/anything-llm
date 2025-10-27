@@ -39,7 +39,7 @@ VITE_API_BASE='/api' # Use this URL deploying on non-localhost address OR in doc
 
 ## To start the application
 
-AnythingLLM is comprised of three main sections. The `frontend`, `server`, and `collector`. When running in production you will be running `server` and `collector` on two different processes, with a build step for compilation of the frontend.
+AnythingLLM is comprised of three main sections: the `frontend`, the `server`, and the `collector`. The collector is a Node.js document ingestion service (see [collector/README.md](./collector/README.md) for details). When running in production you will be running `server` and `collector` on two different processes, with a build step for compilation of the frontend.
 
 1. Build the frontend application.
 `cd frontend && yarn build` - this will produce a `frontend/dist` folder that will be used later.
@@ -56,7 +56,7 @@ cd server && npx prisma migrate deploy --schema=./prisma/schema.prisma
 4. Boot the server in production
 `cd server && NODE_ENV=production node index.js &`
 
-5. Boot the collection in another process
+5. Boot the collector in another process
 `cd collector && NODE_ENV=production node index.js &`
 
 AnythingLLM should now be running on `http://localhost:3001`!

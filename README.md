@@ -150,7 +150,7 @@ This monorepo consists of six main sections:
 
 - `frontend`: A viteJS + React frontend that you can run to easily create and manage all your content the LLM can use.
 - `server`: A NodeJS express server to handle all the interactions and do all the vectorDB management and LLM interactions.
-- `collector`: NodeJS express server that processes and parses documents from the UI.
+- `collector`: Node.js Express service that processes and parses documents from the UI ([setup guide](./collector/README.md)).
 - `docker`: Docker instructions and build process + information for building from source.
 - `embed`: Submodule for generation & creation of the [web embed widget](https://github.com/Mintplex-Labs/anythingllm-embed).
 - `browser-extension`: Submodule for the [chrome browser extension](https://github.com/Mintplex-Labs/anythingllm-extension).
@@ -186,11 +186,23 @@ Mintplex Labs & the community maintain a number of deployment methods, scripts, 
   - Go fill those out before proceeding. Ensure `server/.env.development` is filled or else things won't work right.
 - `yarn dev:server` To boot the server locally (from root of repo).
 - `yarn dev:frontend` To boot the frontend locally (from root of repo).
-- `yarn dev:collector` To then run the document collector (from root of repo).
+- `yarn dev:collector` To then run the document collector (from root of repo). See [collector/README.md](./collector/README.md) for runtime details.
 
 [Learn about documents](./server/storage/documents/DOCUMENTS.md)
 
 [Learn about vector caching](./server/storage/vector-cache/VECTOR_CACHE.md)
+
+### Experimental features & feature flags
+
+Some capabilities remain in preview and are intentionally gated:
+
+- **Live document sync** is controlled by the `experimental_live_file_sync`
+  feature flag. Only administrators can toggle the feature from the
+  Experimental Features screen. When disabled, the queue browser and watch
+  management endpoints respond with `401` to prevent accidental workloads. When
+  enabled, the system continuously polls watched sources (web links, Confluence,
+  GitHub, GitLab, Drupal Wiki, and YouTube). Review resource and rate-limit
+  impacts before enabling it in production environments.
 
 ## External Apps & Integrations
 

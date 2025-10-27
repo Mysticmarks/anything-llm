@@ -47,7 +47,7 @@ export default function ImportedSkillConfig({
 
   async function toggleSkill() {
     const updatedConfig = { ...selectedSkill, active: !config.active };
-    await System.experimentalFeatures.agentPlugins.updatePluginConfig(
+    await System.agentPlugins.updatePluginConfig(
       config.hubId,
       { active: !config.active }
     );
@@ -85,7 +85,7 @@ export default function ImportedSkillConfig({
       return;
     }
 
-    await System.experimentalFeatures.agentPlugins.updatePluginConfig(
+    await System.agentPlugins.updatePluginConfig(
       config.hubId,
       updatedConfig
     );
@@ -200,7 +200,7 @@ function ManageSkillMenu({ config, setImportedSkills }) {
       )
     )
       return;
-    const success = await System.experimentalFeatures.agentPlugins.deletePlugin(
+    const success = await System.agentPlugins.deletePlugin(
       config.hubId
     );
     if (success) {
