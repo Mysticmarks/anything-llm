@@ -136,6 +136,9 @@ export default {
     interface: () => {
       return "/settings/interface";
     },
+    themeStudio: () => {
+      return "/settings/theme-studio";
+    },
     branding: () => {
       return "/settings/branding";
     },

@@ -1,7 +1,7 @@
 import { PaperclipHorizontal } from "@phosphor-icons/react";
 import { Tooltip } from "react-tooltip";
 import { useTranslation } from "react-i18next";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import Workspace from "@/models/workspace";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../../DnDWrapper";
 import { useTheme } from "@/hooks/useTheme";
 import ParsedFilesMenu from "./ParsedFilesMenu";
+import { motion } from "framer-motion";
 
 /**
  * This is a simple proxy component that clicks on the DnD file uploader for the user.
@@ -17,7 +18,7 @@ import ParsedFilesMenu from "./ParsedFilesMenu";
  */
 export default function AttachItem() {
   const { t } = useTranslation();
-  const { theme } = useTheme();
+  const { themeMode, animationMultiplier } = useTheme();
   const { slug, threadSlug = null } = useParams();
   const tooltipRef = useRef(null);
   const [isEmbedding, setIsEmbedding] = useState(false);
@@ -79,16 +80,26 @@ export default function AttachItem() {
     };
   }, [slug, threadSlug]);
 
+  const motionInteractions = useMemo(() => {
+    if (!animationMultiplier) return {};
+    return {
+      whileHover: { scale: 1.05 },
+      whileTap: { scale: 0.95 },
+      transition: { duration: 0.18 * animationMultiplier, ease: "easeOut" },
+    };
+  }, [animationMultiplier]);
+
   return (
     <>
-      <button
+      <motion.button
         id="attach-item-btn"
         data-tooltip-id="tooltip-attach-item-btn"
         aria-label={t("chat_window.attach_file")}
         type="button"
         onClick={handleClick}
         onPointerEnter={fetchFiles}
-        className={`border-none relative flex justify-center items-center opacity-60 hover:opacity-100 light:opacity-100 light:hover:opacity-60 cursor-pointer`}
+        className="border-none relative flex justify-center items-center rounded-md opacity-60 hover:opacity-100 light:opacity-100 light:hover:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-button-primary"
+        {...motionInteractions}
       >
         <div className="relative">
           <PaperclipHorizontal
@@ -101,7 +112,7 @@ export default function AttachItem() {
             </div>
           )}
         </div>
-      </button>
+      </motion.button>
       {showTooltip && (
         <Tooltip
           ref={tooltipRef}
@@ -112,7 +123,7 @@ export default function AttachItem() {
           delayShow={300}
           delayHide={isEmbedding ? 999999 : 800} // Prevent tooltip from hiding during embedding
           arrowColor={
-            theme === "light"
+            themeMode === "light"
               ? "var(--theme-modal-border)"
               : "var(--theme-bg-primary)"
           }

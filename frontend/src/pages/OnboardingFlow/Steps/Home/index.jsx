@@ -21,9 +21,9 @@ const IMG_SRCSET = {
 
 export default function OnboardingHome() {
   const navigate = useNavigate();
-  const { theme } = useTheme();
+  const { themeMode } = useTheme();
   const { t } = useTranslation();
-  const srcSet = IMG_SRCSET?.[theme] || IMG_SRCSET.default;
+  const srcSet = themeMode === "light" ? IMG_SRCSET.light : IMG_SRCSET.default;
 
   return (
     <>

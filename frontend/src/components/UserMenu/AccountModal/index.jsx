@@ -10,6 +10,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import { Tooltip } from "react-tooltip";
+import { Link } from "react-router-dom";
+import paths from "@/utils/paths";
 
 export default function AccountModal({ user, hideModal }) {
   const { pfp, setPfp } = usePfp();
@@ -251,8 +253,12 @@ function LanguagePreference() {
 }
 
 function ThemePreference() {
-  const { theme, setTheme, availableThemes } = useTheme();
+  const { theme, setTheme, availableThemes, palette } = useTheme();
   const { t } = useTranslation();
+  const swatches = Object.entries(palette)
+    .slice(0, 4)
+    .map(([key, value]) => ({ key, value }));
+
   return (
     <div>
       <label
@@ -261,18 +267,35 @@ function ThemePreference() {
       >
         {t("profile_settings.theme")}
       </label>
-      <select
-        name="theme"
-        value={theme}
-        onChange={(e) => setTheme(e.target.value)}
-        className="border-none bg-theme-settings-input-bg w-fit px-4 focus:outline-primary-button active:outline-primary-button outline-none text-white text-sm rounded-lg block py-2"
-      >
-        {Object.entries(availableThemes).map(([key, value]) => (
-          <option key={key} value={key}>
-            {value}
-          </option>
-        ))}
-      </select>
+      <div className="flex flex-col gap-3">
+        <select
+          name="theme"
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          className="border-none bg-theme-settings-input-bg w-full px-4 focus:outline-primary-button active:outline-primary-button outline-none text-white text-sm rounded-lg py-2"
+        >
+          {availableThemes.map((preset) => (
+            <option key={preset.id} value={preset.id}>
+              {preset.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-2" aria-hidden="true">
+          {swatches.map((swatch) => (
+            <div
+              key={swatch.key}
+              className="h-5 w-5 rounded-md border border-theme-home-border"
+              style={{ backgroundColor: swatch.value }}
+            />
+          ))}
+        </div>
+        <Link
+          to={paths.settings.themeStudio()}
+          className="text-xs font-semibold text-theme-home-text underline underline-offset-4 hover:text-theme-button-primary"
+        >
+          {t("customization.items.theme.open_studio", "Open Theme Studio")}
+        </Link>
+      </div>
     </div>
   );
 }

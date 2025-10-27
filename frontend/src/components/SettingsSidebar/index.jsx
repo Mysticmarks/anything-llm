@@ -331,6 +331,12 @@ const SidebarOptions = ({ user = null, t }) => (
               roles: ["admin", "manager"],
             },
             {
+              btnText: t("settings.theme-studio", "Theme Studio"),
+              href: paths.settings.themeStudio(),
+              flex: true,
+              roles: ["admin", "manager"],
+            },
+            {
               btnText: t("settings.branding"),
               href: paths.settings.branding(),
               flex: true,

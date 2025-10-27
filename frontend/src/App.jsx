@@ -34,6 +34,7 @@ const InterfaceSettings = lazy(
 const BrandingSettings = lazy(
   () => import("@/pages/GeneralSettings/Settings/Branding")
 );
+const ThemeStudio = lazy(() => import("@/pages/Settings/ThemeStudio"));
 
 const ChatSettings = lazy(
   () => import("@/pages/GeneralSettings/Settings/Chat")
@@ -196,6 +197,10 @@ export default function App() {
                   <Route
                     path="/settings/interface"
                     element={<ManagerRoute Component={InterfaceSettings} />}
+                  />
+                  <Route
+                    path="/settings/theme-studio"
+                    element={<ManagerRoute Component={ThemeStudio} />}
                   />
                   <Route
                     path="/settings/branding"

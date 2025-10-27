@@ -90,6 +90,7 @@ const TRANSLATIONS = {
     "workspace-chats": "Workspace Chats",
     customization: "Customization",
     interface: "UI Preferences",
+    "theme-studio": "Theme Studio",
     branding: "Branding & Whitelabeling",
     chat: "Chat",
     "api-keys": "Developer API",
@@ -483,6 +484,7 @@ const TRANSLATIONS = {
       theme: {
         title: "Theme",
         description: "Select your preferred color theme for the application.",
+        open_studio: "Open Theme Studio",
       },
       "show-scrollbar": {
         title: "Show Scrollbar",

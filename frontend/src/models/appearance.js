@@ -16,6 +16,7 @@ const Appearance = {
     autoPlayAssistantTtsResponse: false,
     enableSpellCheck: true,
     renderHTML: false,
+    themePreferences: {},
   },
 
   /**
