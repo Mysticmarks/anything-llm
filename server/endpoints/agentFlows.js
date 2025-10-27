@@ -1,10 +1,91 @@
+const { v4: uuidv4 } = require("uuid");
 const { AgentFlows } = require("../utils/agentFlows");
+const { FLOW_TYPES } = require("../utils/agentFlows/executor");
 const {
   flexUserRoleValid,
   ROLES,
 } = require("../utils/middleware/multiUserProtected");
 const { validatedRequest } = require("../utils/middleware/validatedRequest");
 const { Telemetry } = require("../models/telemetry");
+const { Workspace } = require("../models/workspace");
+const {
+  EphemeralAgentHandler,
+  EphemeralEventListener,
+} = require("../utils/agents/ephemeral");
+
+function formatMessageSegment(segment) {
+  if (segment === null || segment === undefined) return "";
+  if (typeof segment === "string") return segment;
+  try {
+    return JSON.stringify(segment);
+  } catch (error) {
+    return String(segment);
+  }
+}
+
+async function buildAgentContext(flow, workspaceLookup) {
+  if (!workspaceLookup) return { aibitat: null, listener: null, workspace: null };
+
+  const workspace = await Workspace.get(workspaceLookup);
+  if (!workspace) {
+    const error = new Error("Workspace not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const handler = new EphemeralAgentHandler({
+    uuid: `flow-${uuidv4()}`,
+    workspace,
+    prompt:
+      flow?.config?.description ||
+      `Executing ${flow?.name || "agent flow"} from the admin panel`,
+  });
+
+  try {
+    await handler.init();
+  } catch (error) {
+    error.statusCode = 400;
+    error.expose = true;
+    throw error;
+  }
+
+  const listener = new EphemeralEventListener();
+  await handler.createAIbitat({
+    handler: listener,
+    introspection: true,
+    muteUserReply: true,
+  });
+
+  const agentLogs = [];
+  const originalLog = handler.aibitat?.handlerProps?.log;
+  if (handler.aibitat?.handlerProps) {
+    handler.aibitat.handlerProps.log = (message, ...rest) => {
+      agentLogs.push(
+        [message, ...rest].map((item) => formatMessageSegment(item)).join(" ")
+      );
+      if (typeof originalLog === "function") {
+        return originalLog(message, ...rest);
+      }
+    };
+  }
+
+  return {
+    aibitat: handler.aibitat,
+    listener,
+    workspace,
+    agentLogs,
+    teardown: () => {
+      if (typeof handler.aibitat?.terminate === "function") {
+        try {
+          handler.aibitat.terminate();
+        } catch (_) {
+          // noop – termination best effort
+        }
+      }
+      if (typeof listener.close === "function") listener.close();
+    },
+  };
+}
 
 function agentFlowEndpoints(app) {
   if (!app) return;
@@ -101,38 +182,128 @@ function agentFlowEndpoints(app) {
   );
 
   // Run a specific flow
-  // app.post(
-  //   "/agent-flows/:uuid/run",
-  //   [validatedRequest, flexUserRoleValid([ROLES.admin])],
-  //   async (request, response) => {
-  //     try {
-  //       const { uuid } = request.params;
-  //       const { variables = {} } = request.body;
+  app.post(
+    "/agent-flows/:uuid/run",
+    [validatedRequest, flexUserRoleValid([ROLES.admin])],
+    async (request, response) => {
+      try {
+        const { uuid } = request.params;
+        const {
+          variables = {},
+          workspaceId = null,
+          workspaceSlug = null,
+          includeTelemetry = true,
+        } = request.body || {};
 
-  //       // TODO: Implement flow execution
-  //       console.log("Running flow with UUID:", uuid);
+        const flow = AgentFlows.loadFlow(uuid);
+        if (!flow) {
+          return response.status(404).json({
+            success: false,
+            error: "Flow not found",
+          });
+        }
 
-  //       await Telemetry.sendTelemetry("agent_flow_executed", {
-  //         variableCount: Object.keys(variables).length,
-  //       });
+        const requiresAgentContext = Array.isArray(flow.config?.steps)
+          ? flow.config.steps.some((step) =>
+              [
+                FLOW_TYPES.LLM_INSTRUCTION.type,
+                FLOW_TYPES.WEB_SCRAPING.type,
+              ].includes(step.type)
+            )
+          : false;
 
-  //       return response.status(200).json({
-  //         success: true,
-  //         results: {
-  //           success: true,
-  //           results: "test",
-  //           variables: variables,
-  //         },
-  //       });
-  //     } catch (error) {
-  //       console.error("Error running flow:", error);
-  //       return response.status(500).json({
-  //         success: false,
-  //         error: error.message,
-  //       });
-  //     }
-  //   }
-  // );
+        const workspaceLookup = workspaceId
+          ? { id: Number(workspaceId) }
+          : workspaceSlug
+          ? { slug: String(workspaceSlug) }
+          : null;
+
+        if (requiresAgentContext && !workspaceLookup) {
+          return response.status(400).json({
+            success: false,
+            error:
+              "This flow requires a workspace context. Provide workspaceId or workspaceSlug to execute it.",
+          });
+        }
+
+        let context = {
+          aibitat: null,
+          listener: null,
+          workspace: null,
+          agentLogs: [],
+          teardown: () => {},
+        };
+
+        if (workspaceLookup) {
+          context = await buildAgentContext(flow, workspaceLookup);
+        }
+
+        let executionResult;
+        try {
+          executionResult = await AgentFlows.executeFlow(
+            uuid,
+            variables,
+            context.aibitat
+          );
+        } catch (error) {
+          context.teardown();
+          console.error("Error running flow:", error);
+          await Telemetry.sendTelemetry("agent_flow_execution_failed", {
+            flow: uuid,
+            error: error.message,
+          });
+          return response.status(500).json({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        context.teardown();
+
+        await Telemetry.sendTelemetry("agent_flow_executed", {
+          flow: uuid,
+          variableCount: Object.keys(variables || {}).length,
+          success: executionResult?.success ?? false,
+        });
+
+        const payload = {
+          success: true,
+          flow: {
+            uuid,
+            name: flow.name,
+          },
+          results: executionResult,
+        };
+
+        if (includeTelemetry && context.listener) {
+          const { thoughts } = context.listener.packMessages();
+          payload.telemetry = {
+            thoughts,
+            logs: context.agentLogs,
+          };
+        }
+
+        if (context.workspace) {
+          payload.workspace = {
+            id: context.workspace.id,
+            slug: context.workspace.slug,
+            name: context.workspace.name,
+          };
+        }
+
+        return response.status(200).json(payload);
+      } catch (error) {
+        const statusCode = error?.statusCode || 500;
+        if (statusCode >= 500) {
+          console.error("Error running flow:", error);
+        }
+        return response.status(statusCode).json({
+          success: false,
+          error: error?.expose ? error.message : "Failed to run flow",
+        });
+      }
+    }
+  );
 
   // Delete a specific flow
   app.delete(
