@@ -5,6 +5,73 @@ const { Telemetry } = require("./telemetry");
 const { EventLogs } = require("./eventLogs");
 const { safeJsonParse } = require("../utils/http");
 const { getModelTag } = require("../endpoints/utils");
+const { enqueueEmbeddingJob, getQueueEvents } = require(
+  "../utils/queues/embedQueue"
+);
+
+async function embedDocumentsInternal(workspace, additions = [], userId = null) {
+  const VectorDb = getVectorDbClass();
+  if (additions.length === 0) return { failed: [], embedded: [] };
+  const { fileData } = require("../utils/files");
+  const embedded = [];
+  const failedToEmbed = [];
+  const errors = new Set();
+
+  for (const path of additions) {
+    const data = await fileData(path);
+    if (!data) continue;
+
+    const docId = uuidv4();
+    const { pageContent, ...metadata } = data;
+    const newDoc = {
+      docId,
+      filename: path.split("/")[1],
+      docpath: path,
+      workspaceId: workspace.id,
+      metadata: JSON.stringify(metadata),
+    };
+
+    const { vectorized, error } = await VectorDb.addDocumentToNamespace(
+      workspace.slug,
+      { ...data, docId },
+      path
+    );
+
+    if (!vectorized) {
+      console.error(
+        "Failed to vectorize",
+        metadata?.title || newDoc.filename
+      );
+      failedToEmbed.push(metadata?.title || newDoc.filename);
+      errors.add(error);
+      continue;
+    }
+
+    try {
+      await prisma.workspace_documents.create({ data: newDoc });
+      embedded.push(path);
+    } catch (error) {
+      console.error(error.message);
+    }
+  }
+
+  await Telemetry.sendTelemetry("documents_embedded_in_workspace", {
+    LLMSelection: process.env.LLM_PROVIDER || "openai",
+    Embedder: process.env.EMBEDDING_ENGINE || "inherit",
+    VectorDbSelection: process.env.VECTOR_DB || "lancedb",
+    TTSSelection: process.env.TTS_PROVIDER || "native",
+    LLMModel: getModelTag(),
+  });
+  await EventLogs.logEvent(
+    "workspace_documents_added",
+    {
+      workspaceName: workspace?.name || "Unknown Workspace",
+      numberOfDocumentsAdded: additions.length,
+    },
+    userId
+  );
+  return { failedToEmbed, errors: Array.from(errors), embedded };
+}
 
 const Document = {
   writable: ["pinned", "watched", "lastUpdatedAt"],
@@ -80,68 +147,51 @@ const Document = {
     }
   },
 
-  addDocuments: async function (workspace, additions = [], userId = null) {
-    const VectorDb = getVectorDbClass();
-    if (additions.length === 0) return { failed: [], embedded: [] };
-    const { fileData } = require("../utils/files");
-    const embedded = [];
-    const failedToEmbed = [];
-    const errors = new Set();
+  addDocuments: async function (
+    workspace,
+    additions = [],
+    userId = null,
+    options = {}
+  ) {
+    if (!workspace?.id) throw new Error("Workspace context is required");
+    const { skipQueue = false, fireAndForget = false } = options || {};
 
-    for (const path of additions) {
-      const data = await fileData(path);
-      if (!data) continue;
-
-      const docId = uuidv4();
-      const { pageContent, ...metadata } = data;
-      const newDoc = {
-        docId,
-        filename: path.split("/")[1],
-        docpath: path,
-        workspaceId: workspace.id,
-        metadata: JSON.stringify(metadata),
-      };
-
-      const { vectorized, error } = await VectorDb.addDocumentToNamespace(
-        workspace.slug,
-        { ...data, docId },
-        path
-      );
-
-      if (!vectorized) {
-        console.error(
-          "Failed to vectorize",
-          metadata?.title || newDoc.filename
-        );
-        failedToEmbed.push(metadata?.title || newDoc.filename);
-        errors.add(error);
-        continue;
-      }
-
-      try {
-        await prisma.workspace_documents.create({ data: newDoc });
-        embedded.push(path);
-      } catch (error) {
-        console.error(error.message);
-      }
+    if (skipQueue) {
+      return embedDocumentsInternal(workspace, additions, userId);
     }
 
-    await Telemetry.sendTelemetry("documents_embedded_in_workspace", {
-      LLMSelection: process.env.LLM_PROVIDER || "openai",
-      Embedder: process.env.EMBEDDING_ENGINE || "inherit",
-      VectorDbSelection: process.env.VECTOR_DB || "lancedb",
-      TTSSelection: process.env.TTS_PROVIDER || "native",
-      LLMModel: getModelTag(),
-    });
-    await EventLogs.logEvent(
-      "workspace_documents_added",
-      {
-        workspaceName: workspace?.name || "Unknown Workspace",
-        numberOfDocumentsAdded: additions.length,
-      },
-      userId
-    );
-    return { failedToEmbed, errors: Array.from(errors), embedded };
+    let job = null;
+    try {
+      job = await enqueueEmbeddingJob({
+        workspace: { id: workspace.id, slug: workspace.slug },
+        additions,
+        userId,
+      });
+    } catch (error) {
+      console.error(
+        `\x1b[33m[Document]\x1b[0m Failed to enqueue embedding job: ${error?.message}`
+      );
+    }
+
+    if (!job) {
+      return embedDocumentsInternal(workspace, additions, userId);
+    }
+
+    if (fireAndForget) return { jobId: job.id };
+
+    const events = await getQueueEvents();
+    if (!events) {
+      return embedDocumentsInternal(workspace, additions, userId);
+    }
+
+    try {
+      return await job.waitUntilFinished(events);
+    } catch (error) {
+      console.error(
+        `\x1b[31m[Document]\x1b[0m Embedding job failed: ${error?.message}`
+      );
+      throw error;
+    }
   },
 
   removeDocuments: async function (workspace, removals = [], userId = null) {
@@ -302,6 +352,7 @@ const Document = {
       return true;
     },
   },
+  _embedDocuments: embedDocumentsInternal,
 };
 
 module.exports = { Document };
