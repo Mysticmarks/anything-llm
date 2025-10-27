@@ -155,19 +155,46 @@ const Admin = {
       });
   },
 
-  // System Preferences
-  // TODO: remove this in favor of systemPreferencesByFields
-  // DEPRECATED: use systemPreferencesByFields instead
-  systemPreferences: async () => {
-    return await fetch(`${API_BASE}/admin/system-preferences`, {
-      method: "GET",
-      headers: baseHeaders(),
-    })
-      .then((res) => res.json())
-      .catch((e) => {
-        console.error(e);
-        return null;
-      });
+  // System Preferences (legacy helper for callers expecting the former aggregate response)
+  systemPreferences: async function () {
+    const labels = [
+      "footer_data",
+      "support_email",
+      "text_splitter_chunk_size",
+      "text_splitter_chunk_overlap",
+      "max_embed_chunk_size",
+      "agent_search_provider",
+      "agent_sql_connections",
+      "default_agent_skills",
+      "disabled_agent_skills",
+      "imported_agent_skills",
+      "custom_app_name",
+      "feature_flags",
+      "meta_page_title",
+      "meta_page_favicon",
+    ];
+
+    const response = await this.systemPreferencesByFields(labels);
+    const settings = response?.settings || {};
+
+    return {
+      settings: {
+        footer_data: settings.footer_data ?? JSON.stringify([]),
+        support_email: settings.support_email ?? null,
+        text_splitter_chunk_size: settings.text_splitter_chunk_size ?? null,
+        text_splitter_chunk_overlap: settings.text_splitter_chunk_overlap ?? null,
+        max_embed_chunk_size: settings.max_embed_chunk_size ?? 1000,
+        agent_search_provider: settings.agent_search_provider ?? null,
+        agent_sql_connections: settings.agent_sql_connections ?? [],
+        default_agent_skills: settings.default_agent_skills ?? [],
+        disabled_agent_skills: settings.disabled_agent_skills ?? [],
+        imported_agent_skills: settings.imported_agent_skills ?? [],
+        custom_app_name: settings.custom_app_name ?? null,
+        feature_flags: settings.feature_flags ?? {},
+        meta_page_title: settings.meta_page_title ?? null,
+        meta_page_favicon: settings.meta_page_favicon ?? null,
+      },
+    };
   },
 
   /**
@@ -236,7 +263,7 @@ const Admin = {
       });
   },
   deleteApiKey: async function (apiKeyId = "") {
-    return fetch(`${API_BASE}/admin/delete-api-key/${apiKeyId}`, {
+    return fetch(`${API_BASE}/system/api-key/${apiKeyId}`, {
       method: "DELETE",
       headers: baseHeaders(),
     })

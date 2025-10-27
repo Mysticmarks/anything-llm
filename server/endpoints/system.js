@@ -938,15 +938,11 @@ function systemEndpoints(app) {
     }
   );
 
-  // TODO: This endpoint is replicated in the admin endpoints file.
-  // and should be consolidated to be a single endpoint with flexible role protection.
   app.delete(
     "/system/api-key/:id",
-    [validatedRequest],
+    [validatedRequest, flexUserRoleValid([ROLES.admin])],
     async (request, response) => {
       try {
-        if (response.locals.multiUserMode)
-          return response.sendStatus(401).end();
         const { id } = request.params;
         if (!id || isNaN(Number(id))) return response.sendStatus(400).end();
 
