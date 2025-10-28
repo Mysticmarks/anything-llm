@@ -240,10 +240,10 @@ class AIbitat {
    *
    * @param message
    */
-  newMessage(message) {
+  newMessage(message, state = "success") {
     const chat = {
       ...message,
-      state: "success",
+      state,
     };
 
     this._chats.push(chat);
@@ -349,9 +349,27 @@ class AIbitat {
       }
 
       if (!nextNode) {
-        // TODO: should it throw an error or keep the chat alive when there is no node to chat with in the group?
-        // maybe it should wrap up the chat and reply to the original node
-        // For now, it will terminate the chat
+        const channelConfig = this.getChannelConfig(route.from);
+        const fallbackMessage =
+          channelConfig.emptySelectionFallbackMessage ??
+          "No additional agents are available in this channel. Escalating to a human for review.";
+
+        this.newMessage(
+          {
+            from: route.from,
+            to: route.to,
+            content: fallbackMessage,
+          },
+          "fallback"
+        );
+
+        Telemetry.sendTelemetry(
+          "agent_flow_fallback",
+          { channel: route.from },
+          null,
+          true
+        );
+
         this.terminate(route.from);
         return;
       }
@@ -462,7 +480,7 @@ class AIbitat {
       }
     }
 
-    // TODO: what should it do when there is no node to chat with?
+    // No available nodes remain; let caller trigger the configured fallback.
     if (!availableNodes.length) return;
 
     // get the provider that will be used for the channel
