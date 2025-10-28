@@ -34,6 +34,12 @@ const { mcpServersEndpoints } = require("./endpoints/mcpServers");
 const { mobileEndpoints } = require("./endpoints/mobile");
 const { metricsEndpoints } = require("./endpoints/metrics");
 const { httpLogger } = require("./middleware/httpLogger");
+const {
+  cluster,
+  workerTarget,
+  restartDelay,
+  SHOULD_SUPERVISE,
+} = require("../supervisor")("server");
 const app = express();
 const apiRouter = express.Router();
 const FILE_LIMIT = "3GB";
