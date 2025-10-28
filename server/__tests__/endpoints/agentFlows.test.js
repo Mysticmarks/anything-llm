@@ -53,13 +53,13 @@ const handlerCreateAIbitat = jest
     );
   });
 
-const handlerFactory = jest.fn().mockImplementation(() => ({
+const mockHandlerFactory = jest.fn().mockImplementation(() => ({
   aibitat: mockAibitat,
   init: handlerInit,
   createAIbitat: handlerCreateAIbitat,
 }));
 
-const listenerFactory = jest.fn().mockImplementation(() => {
+const mockListenerFactory = jest.fn().mockImplementation(() => {
   const instance = {
     messages: [],
     send: jest.fn(function (payload) {
@@ -78,8 +78,8 @@ const listenerFactory = jest.fn().mockImplementation(() => {
 });
 
 jest.mock("../../utils/agents/ephemeral", () => ({
-  EphemeralAgentHandler: handlerFactory,
-  EphemeralEventListener: listenerFactory,
+  EphemeralAgentHandler: mockHandlerFactory,
+  EphemeralEventListener: mockListenerFactory,
 }));
 
 describe("agent flow run endpoint", () => {
@@ -183,8 +183,8 @@ describe("agent flow run endpoint", () => {
       .send({ workspaceId: 1, variables: {} });
 
     expect(response.status).toBe(200);
-    expect(handlerFactory).toHaveBeenCalledTimes(1);
-    expect(listenerFactory).toHaveBeenCalledTimes(1);
+    expect(mockHandlerFactory).toHaveBeenCalledTimes(1);
+    expect(mockListenerFactory).toHaveBeenCalledTimes(1);
     expect(response.body.workspace).toMatchObject({ slug: "demo-workspace" });
     expect(response.body.telemetry.thoughts).toContain("boot sequence");
     expect(response.body.telemetry.logs[0]).toContain("step complete");
