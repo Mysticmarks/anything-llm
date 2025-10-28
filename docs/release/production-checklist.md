@@ -11,6 +11,7 @@ budgets to ensure a predictable rollout.
   - [ ] `cd server && yarn lint && yarn test`
   - [ ] `cd frontend && yarn lint && yarn test`
   - [ ] `cd collector && yarn lint && yarn test`
+- [ ] Verify automated coverage for authentication, onboarding, chat, workspace lifecycle, and collector ingestion suites remains above 80% (run `yarn test -- --coverage` and review server/collector reports).
 - [ ] Verify database migrations with `yarn prisma:migrate` against staging.
 - [ ] Capture release notes summarizing user-facing changes and operational impacts.
 

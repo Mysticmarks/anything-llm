@@ -90,6 +90,9 @@ jobs:
       - name: Run test suites
         run: yarn test
 
+      - name: Run collector ingestion tests
+        run: yarn test collector
+
       - name: Build frontend for E2E tests
         run: cd frontend && yarn build
 
