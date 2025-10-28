@@ -47,6 +47,76 @@ const FLOW_TYPES = {
       },
     ],
   },
+  WEBSITE: {
+    type: "website",
+    description: "Open a website and optionally interact with it",
+    parameters: {
+      url: { type: "string", description: "The URL to open" },
+      action: {
+        type: "string",
+        description: "Action to perform (read, click, or type)",
+      },
+      selector: {
+        type: "string",
+        description: "CSS selector used for click or type actions",
+      },
+      value: {
+        type: "string",
+        description: "Value to type when using the type action",
+      },
+      resultVariable: {
+        type: "string",
+        description: "Variable to store the interaction result",
+      },
+      directOutput: {
+        type: "boolean",
+        description:
+          "Whether to return the interaction result directly to the user",
+      },
+    },
+  },
+  FILE: {
+    type: "file",
+    description: "Read from or write to a file on disk",
+    parameters: {
+      path: { type: "string", description: "Relative path to the file" },
+      operation: {
+        type: "string",
+        description: "Operation to perform (read, write, append)",
+      },
+      content: {
+        type: "string",
+        description: "Content to write or append when applicable",
+      },
+      resultVariable: {
+        type: "string",
+        description: "Variable to store the file contents or status",
+      },
+      directOutput: {
+        type: "boolean",
+        description: "Whether to return the file result directly to the user",
+      },
+    },
+  },
+  CODE: {
+    type: "code",
+    description: "Execute a code snippet in a supported runtime",
+    parameters: {
+      language: {
+        type: "string",
+        description: "Language to execute (javascript, python, shell)",
+      },
+      code: { type: "string", description: "Code to execute" },
+      resultVariable: {
+        type: "string",
+        description: "Variable to store the execution result",
+      },
+      directOutput: {
+        type: "boolean",
+        description: "Whether to return the execution result directly",
+      },
+    },
+  },
   LLM_INSTRUCTION: {
     type: "llmInstruction",
     description: "Process data using LLM instructions",
