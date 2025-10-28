@@ -80,6 +80,20 @@ can correct the request and retry.
   and the message returned by the executor.
 - Workspace lookup errors surface as HTTP 404 with a human readable message.
 
+## Agent channel fallbacks
+
+Multi-agent flows rely on channel graphs to decide which participant should
+speak next. When the selector cannot identify a follow-up speaker—because every
+member has reached its round limit or is otherwise unavailable—the runtime now
+emits a fallback message instead of silently terminating the conversation. The
+channel posts the message to the waiting participant, the session is terminated,
+and the `agent_flow_fallback` telemetry event is sent for observability.
+
+Customize the text that is delivered during this fallback by adding
+`emptySelectionFallbackMessage` to the channel configuration when constructing
+the flow. If the field is omitted, a default escalation notice is used to
+indicate that a human hand-off is required.
+
 ## Testing guidance
 
 The server test suite includes `server/__tests__/endpoints/agentFlows.test.js`
