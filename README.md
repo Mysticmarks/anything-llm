@@ -203,6 +203,21 @@ When you're ready to run the full stack with production builds and restart-safe 
 
 The production launcher honours `FRONTEND_HOST`, `FRONTEND_PORT`, and `SKIP_FRONTEND_BUILD` environment variables. You can also tune the new supervisors with `SERVER_SUPERVISOR_*` and `COLLECTOR_SUPERVISOR_*` options described in the Docker environment template.
 
+### Supervisor configuration
+
+AnythingLLM ships with a lightweight Node.js cluster supervisor that keeps the API server and collector online. The supervisor is off by default in development, but you can enable and tune it with the following environment variables (service-specific settings override the global ones):
+
+| Variable | Applies to | Description |
+| --- | --- | --- |
+| `SHOULD_SUPERVISE` | Both | Enable the cluster supervisor for both services. Accepts `true`/`false`. Defaults to `false`. |
+| `SERVER_SHOULD_SUPERVISE`, `COLLECTOR_SHOULD_SUPERVISE` | Individual service | Enable supervision for only the server or collector. Overrides `SHOULD_SUPERVISE` when set. |
+| `SUPERVISOR_WORKERS` | Both | Target worker count when neither service-specific override is provided. Defaults to `max(available CPUs - 1, 1)`. |
+| `SERVER_SUPERVISOR_WORKERS`, `COLLECTOR_SUPERVISOR_WORKERS` | Individual service | Worker-count override for the server/collector. |
+| `SUPERVISOR_RESTART_DELAY_MS` | Both | Milliseconds to wait before respawning a crashed worker when no service override is present. Defaults to `5000`. |
+| `SERVER_SUPERVISOR_RESTART_DELAY_MS`, `COLLECTOR_SUPERVISOR_RESTART_DELAY_MS` | Individual service | Restart delay override for the server/collector. |
+
+The defaults automatically scale with the CPU count that Node.js reports to the container or host so you can opt into supervision without additional tuning.
+
 [Learn about documents](./server/storage/documents/DOCUMENTS.md)
 
 [Learn about vector caching](./server/storage/vector-cache/VECTOR_CACHE.md)

@@ -20,6 +20,12 @@ const { httpLogger } = require("./middleware/httpLogger");
 const { enqueueProcessingJob, getQueueEvents } = require("./utils/queue");
 const app = express();
 const FILE_LIMIT = "3GB";
+const {
+  cluster,
+  workerTarget,
+  restartDelay,
+  SHOULD_SUPERVISE,
+} = require("../supervisor")("collector");
 
 async function runProcessingJob(jobName, payload, fallback) {
   try {
