@@ -193,4 +193,41 @@ describe("agent flow run endpoint", () => {
       expect.objectContaining({ flow: "demo", success: true })
     );
   });
+  test("omits telemetry payload when includeTelemetry is false", async () => {
+    mockWorkspaceGet.mockResolvedValueOnce({
+      id: 1,
+      slug: "demo",
+      name: "Demo Workspace",
+    });
+
+    const response = await request(app)
+      .post("/agent-flows/demo/run")
+      .send({ workspaceId: 1, includeTelemetry: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body).not.toHaveProperty("telemetry");
+  });
+
+  test("gracefully reports execution failures", async () => {
+    mockWorkspaceGet.mockResolvedValueOnce({
+      id: 1,
+      slug: "demo",
+      name: "Demo Workspace",
+    });
+    mockAgentFlows.executeFlow.mockRejectedValueOnce(new Error("boom"));
+
+    const response = await request(app)
+      .post("/agent-flows/demo/run")
+      .send({ workspaceId: 1, variables: {} });
+
+    expect(response.status).toBe(500);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toBe("boom");
+    expect(mockTelemetry.sendTelemetry).toHaveBeenCalledWith(
+      "agent_flow_execution_failed",
+      expect.objectContaining({ flow: "demo", error: "boom" })
+    );
+    expect(mockAibitat.terminate).toHaveBeenCalled();
+  });
+
 });

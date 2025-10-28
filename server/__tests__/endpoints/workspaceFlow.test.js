@@ -3,6 +3,8 @@ const express = require("express");
 jest.mock("supertest");
 const request = require("supertest");
 
+const mockVectorDelete = jest.fn();
+
 process.env.NODE_ENV = "development";
 
 const mockUser = { id: 1, role: "admin" };
@@ -17,6 +19,7 @@ const mockWorkspaceUpdate = jest.fn().mockResolvedValue({
   workspace: { id: 1, slug: "test-workspace", name: "Updated" },
   message: "updated",
 });
+const mockWorkspaceDelete = jest.fn().mockResolvedValue();
 const mockWorkspaceTrackChange = jest.fn().mockResolvedValue();
 
 jest.mock("../../utils/http", () => ({
@@ -51,13 +54,17 @@ jest.mock("../../models/workspace", () => ({
     get: (...args) => mockWorkspaceGet(...args),
     getWithUser: jest.fn(),
     update: (...args) => mockWorkspaceUpdate(...args),
+    delete: (...args) => mockWorkspaceDelete(...args),
     trackChange: (...args) => mockWorkspaceTrackChange(...args),
   },
 }));
 
-jest.mock("../../models/documents", () => ({ Document: {} }));
-jest.mock("../../models/vectors", () => ({ DocumentVectors: {} }));
-jest.mock("../../models/workspaceChats", () => ({ WorkspaceChats: {} }));
+const mockDocumentDelete = jest.fn().mockResolvedValue();
+jest.mock("../../models/documents", () => ({ Document: { delete: (...args) => mockDocumentDelete(...args) } }));
+const mockDocumentVectorsDelete = jest.fn().mockResolvedValue();
+jest.mock("../../models/vectors", () => ({ DocumentVectors: { deleteForWorkspace: (...args) => mockDocumentVectorsDelete(...args) } }));
+const mockWorkspaceChatsDelete = jest.fn().mockResolvedValue();
+jest.mock("../../models/workspaceChats", () => ({ WorkspaceChats: { delete: (...args) => mockWorkspaceChatsDelete(...args) } }));
 jest.mock("../../models/workspacesSuggestedMessages", () => ({
   WorkspaceSuggestedMessages: {},
 }));
@@ -86,6 +93,10 @@ jest.mock("../../utils/files/multer", () => ({
     next();
   },
   handlePfpUpload: jest.fn(),
+}));
+
+jest.mock("../../utils/helpers", () => ({
+  getVectorDbClass: () => ({ "delete-namespace": (...args) => mockVectorDelete(...args) }),
 }));
 
 jest.mock("../../endpoints/workspacesParsedFiles", () => ({
@@ -170,5 +181,28 @@ describe("workspace endpoints", () => {
     expect(response.status).toBe(500);
     expect(response.body.success).toBe(false);
     expect(mockCollectorInstance.processDocument).not.toHaveBeenCalled();
+  });
+});
+
+  test("DELETE /workspace/:slug removes workspace assets", async () => {
+    mockWorkspaceGet.mockResolvedValueOnce({
+      id: 1,
+      slug: "test-workspace",
+      name: "Test Workspace",
+    });
+
+    const response = await request(app).delete("/workspace/test-workspace");
+
+    expect(response.status).toBe(200);
+    expect(mockWorkspaceChatsDelete).toHaveBeenCalledWith({ workspaceId: 1 });
+    expect(mockDocumentVectorsDelete).toHaveBeenCalledWith(1);
+    expect(mockDocumentDelete).toHaveBeenCalledWith({ workspaceId: 1 });
+    expect(mockWorkspaceDelete).toHaveBeenCalledWith({ id: 1 });
+    expect(mockEventLogs.logEvent).toHaveBeenCalledWith(
+      "workspace_deleted",
+      expect.objectContaining({ workspaceName: "Test Workspace" }),
+      mockUser.id
+    );
+    expect(mockVectorDelete).toHaveBeenCalledWith({ namespace: "test-workspace" });
   });
 });
