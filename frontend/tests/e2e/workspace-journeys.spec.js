@@ -227,6 +227,159 @@ test.describe("Core workspace journeys", () => {
     await expect(page.getByText("Agent is thinking", { exact: false }))
       .toBeVisible();
   });
+
+  test("recovers from agent websocket interruptions", async ({ page }) => {
+    await stubApi(page, {
+      "/api/setup-complete": (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            results: {
+              MultiUserMode: false,
+              RequiresAuth: false,
+              LLMProvider: "openai",
+              VectorDB: "lancedb",
+            },
+          }),
+        }),
+      "/api/workspace/demo": (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            workspace: {
+              id: 1,
+              slug: "demo",
+              name: "Demo Workspace",
+            },
+          }),
+        }),
+      "/api/workspace/demo/suggested-messages": (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ suggestedMessages: [] }),
+        }),
+      "/api/workspace/demo/pfp": (route) => route.fulfill({ status: 204, body: "" }),
+      "/api/workspace/demo/chats": (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ history: [] }),
+        }),
+      "stream-chat": (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+          body:
+            `data: ${JSON.stringify({
+              uuid: "agent-stream",
+              type: "agentInitWebsocketConnection",
+              websocketUUID: "agent-session-1",
+            })}\n\n` +
+            `data: ${JSON.stringify({
+              uuid: "agent-stream",
+              type: "statusResponse",
+              textResponse: "Agent engaged",
+              close: true,
+            })}\n\n`,
+        }),
+    });
+
+    await page.addInitScript(() => {
+      window.__mockSockets = [];
+      class PlaywrightMockWebSocket {
+        constructor(url) {
+          this.url = url;
+          this.listeners = { open: [], message: [], close: [], error: [] };
+          this.readyState = PlaywrightMockWebSocket.CONNECTING;
+          window.__mockSockets.push(this);
+        }
+
+        addEventListener(type, handler) {
+          this.listeners[type].push(handler);
+        }
+
+        removeEventListener(type, handler) {
+          this.listeners[type] = this.listeners[type].filter((fn) => fn !== handler);
+        }
+
+        send(payload) {
+          this.lastSent = payload;
+        }
+
+        close(code = 1000, reason = "") {
+          this.readyState = PlaywrightMockWebSocket.CLOSED;
+          this._dispatch("close", { code, reason });
+        }
+
+        _dispatch(type, payload) {
+          const handlers = [...(this.listeners[type] || [])];
+          handlers.forEach((handler) => handler(payload));
+        }
+      }
+
+      PlaywrightMockWebSocket.CONNECTING = 0;
+      PlaywrightMockWebSocket.OPEN = 1;
+      PlaywrightMockWebSocket.CLOSED = 3;
+
+      window.PlaywrightMockWebSocket = PlaywrightMockWebSocket;
+      window.WebSocket = PlaywrightMockWebSocket;
+    });
+
+    await page.goto("/workspace/demo");
+    const promptInput = page.locator("textarea#primary-prompt-input");
+    await promptInput.fill("Hello agent");
+    await page.getByLabel("Send").click();
+
+    await page.waitForFunction(() => window.__mockSockets?.length === 1);
+
+    await page.evaluate(() => {
+      const socket = window.__mockSockets[0];
+      socket._dispatch("open");
+      socket._dispatch("message", {
+        data: JSON.stringify({
+          type: "statusResponse",
+          content: "Agent booting",
+          uuid: "status-1",
+        }),
+      });
+    });
+
+    await page.evaluate(() => {
+      window.__mockSockets[0]._dispatch("close", {
+        code: 1011,
+        reason: "connection lost",
+      });
+    });
+
+    await page.waitForFunction(() => window.__mockSockets?.length === 2);
+
+    await page.evaluate(() => {
+      const socket = window.__mockSockets[1];
+      socket._dispatch("open");
+      socket._dispatch("message", {
+        data: JSON.stringify({
+          type: "statusResponse",
+          content: "Agent recovered",
+          uuid: "status-2",
+        }),
+      });
+    });
+
+    await page.evaluate(() => {
+      window.__mockSockets[1]._dispatch("close", {
+        code: 1000,
+        reason: "complete",
+      });
+    });
+
+    await expect(page.getByText("Agent recovered", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("Agent session complete.", { exact: false })
+    ).toBeVisible();
+  });
 });
 
 test.describe("Multi-user workspace permissions", () => {
