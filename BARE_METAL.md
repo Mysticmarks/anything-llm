@@ -41,6 +41,9 @@ VITE_API_BASE='/api' # Use this URL deploying on non-localhost address OR in doc
 
 AnythingLLM is comprised of three main sections: the `frontend`, the `server`, and the `collector`. The collector is a Node.js document ingestion service (see [collector/README.md](./collector/README.md) for details). When running in production you will be running `server` and `collector` on two different processes, with a build step for compilation of the frontend.
 
+> [!TIP]
+> Use the [process supervision runbook](./docs/runbooks/process-supervision.md) and the bundled `scripts/pm2.config.cjs` file to manage these services with a production-grade process manager instead of keeping multiple shells open.
+
 1. Build the frontend application.
 `cd frontend && yarn build` - this will produce a `frontend/dist` folder that will be used later.
 

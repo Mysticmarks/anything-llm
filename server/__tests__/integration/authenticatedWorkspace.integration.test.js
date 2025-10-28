@@ -37,10 +37,48 @@ process.env.VECTOR_DB = "lancedb";
 process.env.STORAGE_DIR = storageDir;
 process.env.DATABASE_URL = `file:${testDbPath}`;
 
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } },
+const mockModelMap = {
+  "openai/gpt-4o": {
+    litellm_provider: "openai",
+    max_input_tokens: 128000,
+  },
+  "anthropic/claude-3-haiku": {
+    litellm_provider: "anthropic",
+    max_input_tokens: 200000,
+  },
+  "cohere_chat/command": {
+    litellm_provider: "cohere_chat",
+    max_input_tokens: 80000,
+  },
+  "vertex_ai-language-models/gemini-pro": {
+    litellm_provider: "vertex_ai-language-models",
+    max_input_tokens: 16000,
+  },
+  "groq/llama3-8b": {
+    litellm_provider: "groq",
+    max_input_tokens: 8192,
+  },
+  "xai/grok-beta": {
+    litellm_provider: "xai",
+    max_input_tokens: 8192,
+  },
+  "deepseek/deepseek-chat": {
+    litellm_provider: "deepseek",
+    max_input_tokens: 65536,
+  },
+  "moonshot/moonshot-v1-8k": {
+    litellm_provider: "moonshot",
+    max_input_tokens: 8192,
+  },
+};
+
+global.fetch = jest.fn().mockResolvedValue({
+  status: 200,
+  json: async () => mockModelMap,
 });
+
+const { PrismaClient } = require("@prisma/client");
+let prisma;
 const { systemEndpoints } = require("../../endpoints/system");
 const { workspaceEndpoints } = require("../../endpoints/workspaces");
 const { DocumentVectors } = require("../../models/vectors");
@@ -56,15 +94,22 @@ function prepareFileSystem() {
 }
 
 async function seedDatabase() {
-  await prisma.system_settings.createMany({
-    data: [
-      { label: "multi_user_mode", value: "true" },
-      { label: "telemetry_id", value: "test-system-id" },
-      { label: "text_splitter_chunk_size", value: "1000" },
-      { label: "text_splitter_chunk_overlap", value: "20" },
-    ],
-    skipDuplicates: true,
-  });
+  const systemSettingsSeed = [
+    { label: "multi_user_mode", value: "true" },
+    { label: "telemetry_id", value: "test-system-id" },
+    { label: "text_splitter_chunk_size", value: "1000" },
+    { label: "text_splitter_chunk_overlap", value: "20" },
+  ];
+
+  await prisma.$transaction(
+    systemSettingsSeed.map((setting) =>
+      prisma.system_settings.upsert({
+        where: { label: setting.label },
+        create: setting,
+        update: { value: setting.value },
+      })
+    )
+  );
 
   await prisma.users.create({
     data: {
@@ -145,6 +190,10 @@ describe("Authenticated workspace integration", () => {
       env: { ...process.env },
     });
 
+    prisma = new PrismaClient({
+      datasources: { db: { url: process.env.DATABASE_URL } },
+    });
+
     await seedDatabase();
 
     collector = bootstrapCollectorMock();
@@ -167,7 +216,7 @@ describe("Authenticated workspace integration", () => {
   afterAll(async () => {
     if (collector) await collector.close();
     if (server) await new Promise((resolve) => server.close(resolve));
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
     if (fs.existsSync(testDbPath)) fs.rmSync(testDbPath);
     if (fs.existsSync(lanceStorage)) {
       fs.rmSync(lanceStorage, { recursive: true, force: true });

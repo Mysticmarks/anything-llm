@@ -182,7 +182,6 @@ describe("workspace endpoints", () => {
     expect(response.body.success).toBe(false);
     expect(mockCollectorInstance.processDocument).not.toHaveBeenCalled();
   });
-});
 
   test("DELETE /workspace/:slug removes workspace assets", async () => {
     mockWorkspaceGet.mockResolvedValueOnce({

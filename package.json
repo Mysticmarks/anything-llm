@@ -32,7 +32,8 @@
     "generate:cloudformation": "node cloud-deployments/aws/cloudformation/generate.mjs",
     "generate::gcp_deployment": "node cloud-deployments/gcp/deployment/generate.mjs",
     "verify:translations": "cd frontend/src/locales && node verifyTranslations.mjs",
-    "normalize:translations": "cd frontend/src/locales && node normalizeEn.mjs && cd ../../.. && yarn lint && yarn verify:translations"
+    "normalize:translations": "cd frontend/src/locales && node normalizeEn.mjs && cd ../../.. && yarn lint && yarn verify:translations",
+    "test:coverage": "node ./scripts/run-coverage.mjs"
   },
   "bin": {
     "anything-llm-loadtest": "scripts/load-test.mjs"
