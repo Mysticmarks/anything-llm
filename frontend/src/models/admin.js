@@ -217,7 +217,7 @@ const Admin = {
       });
   },
   updateSystemPreferences: async (updates = {}) => {
-    return await fetch(`${API_BASE}/admin/system-preferences`, {
+    return await fetch(`${API_BASE}/admin/system-preferences/update`, {
       method: "POST",
       headers: baseHeaders(),
       body: JSON.stringify(updates),

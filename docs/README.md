@@ -4,6 +4,7 @@ This directory contains operational documentation that mirrors the production ex
 subdirectory focuses on a specific concern so that contributors and operators can quickly locate the canonical source of truth.
 
 - [`adr/`](./adr) — Architecture Decision Records that capture durable engineering decisions and their rationale.
+- [`api/`](./api) — Endpoint documentation and request/response contracts.
 - [`runbooks/`](./runbooks) — Troubleshooting guides and operational runbooks for production incidents.
 - [`release/`](./release) — Release readiness checklists and production rollout procedures.
 
