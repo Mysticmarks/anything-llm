@@ -1,9 +1,10 @@
-const { Queue, QueueEvents } = require("bullmq");
+const { Queue, QueueEvents, QueueScheduler } = require("bullmq");
 const { ensureConnection, getConnection } = require("./connection");
 
 const EMBEDDING_QUEUE = "embedding-jobs";
 let queue = null;
 let events = null;
+let scheduler = null;
 let initializing = null;
 
 const defaultJobOptions = {
@@ -17,7 +18,7 @@ const defaultJobOptions = {
 };
 
 async function initQueue() {
-  if (queue && events) return true;
+  if (queue && events && scheduler) return true;
   if (initializing) return initializing;
 
   initializing = ensureConnection()
@@ -27,6 +28,28 @@ async function initQueue() {
         connection: getConnection(),
         defaultJobOptions,
       });
+      scheduler = new QueueScheduler(EMBEDDING_QUEUE, {
+        connection: getConnection(),
+      });
+      scheduler.on("error", (error) => {
+        console.error(
+          `\x1b[31m[EmbeddingQueue]\x1b[0m Scheduler error: ${
+            error?.message || error
+          }`
+        );
+      });
+      try {
+        await scheduler.waitUntilReady();
+      } catch (error) {
+        console.warn(
+          `\x1b[33m[EmbeddingQueue]\x1b[0m Failed to initialize scheduler: ${
+            error?.message
+          }`
+        );
+        queue = null;
+        scheduler = null;
+        return false;
+      }
       events = new QueueEvents(EMBEDDING_QUEUE, {
         connection: getConnection(),
       });
@@ -39,10 +62,13 @@ async function initQueue() {
         await events.waitUntilReady();
       } catch (error) {
         console.warn(
-          `\x1b[33m[EmbeddingQueue]\x1b[0m Failed to initialize queue events: ${error?.message}`
+          `\x1b[33m[EmbeddingQueue]\x1b[0m Failed to initialize queue events: ${
+            error?.message
+          }`
         );
         queue = null;
         events = null;
+        scheduler = null;
         return false;
       }
       return true;
@@ -62,6 +88,11 @@ async function getQueue() {
 async function getQueueEvents() {
   const ready = await initQueue();
   return ready ? events : null;
+}
+
+async function getQueueScheduler() {
+  const ready = await initQueue();
+  return ready ? scheduler : null;
 }
 
 async function enqueueEmbeddingJob(data = {}, options = {}) {
@@ -94,5 +125,6 @@ module.exports = {
   getQueue,
   getQueueCounts,
   getQueueEvents,
+  getQueueScheduler,
   getQueueWorkers,
 };
