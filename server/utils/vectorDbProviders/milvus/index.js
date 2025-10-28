@@ -8,7 +8,12 @@ const { TextSplitter } = require("../../TextSplitter");
 const { SystemSettings } = require("../../../models/systemSettings");
 const { v4: uuidv4 } = require("uuid");
 const { storeVectorResult, cachedVectorInformation } = require("../../files");
-const { toChunks, getEmbeddingEngineSelection } = require("../../helpers");
+const {
+  toChunks,
+  getEmbeddingEngineSelection,
+  getDistributedVectorDbConfig,
+  selectVectorDbEndpoint,
+} = require("../../helpers");
 const { sourceIdentifier } = require("../../chats");
 
 const Milvus = {
@@ -27,11 +32,25 @@ const Milvus = {
     if (process.env.VECTOR_DB !== "milvus")
       throw new Error("Milvus::Invalid ENV settings");
 
+    const clusterConfig = getDistributedVectorDbConfig("milvus");
+    const address = selectVectorDbEndpoint("milvus") ||
+      process.env.MILVUS_ADDRESS;
     const client = new MilvusClient({
-      address: process.env.MILVUS_ADDRESS,
-      username: process.env.MILVUS_USERNAME,
-      password: process.env.MILVUS_PASSWORD,
+      address,
+      username: clusterConfig?.username || process.env.MILVUS_USERNAME,
+      password: clusterConfig?.password || process.env.MILVUS_PASSWORD,
     });
+
+    if (clusterConfig?.database) {
+      try {
+        await client.useDatabase({ db_name: clusterConfig.database });
+      } catch (error) {
+        console.warn(
+          "Milvus::connect",
+          `Failed to switch to database ${clusterConfig.database}: ${error?.message}`
+        );
+      }
+    }
 
     const { isHealthy } = await client.checkHealth();
     if (!isHealthy)
@@ -100,6 +119,7 @@ const Milvus = {
           `Milvus:getOrCreateCollection Unable to infer vector dimension from input. Open an issue on GitHub for support.`
         );
 
+      const clusterConfig = getDistributedVectorDbConfig("milvus");
       await client.createCollection({
         collection_name: this.normalize(namespace),
         fields: [
@@ -122,6 +142,9 @@ const Milvus = {
             data_type: DataType.JSON,
           },
         ],
+        ...(clusterConfig?.collectionShards
+          ? { num_shards: clusterConfig.collectionShards }
+          : {}),
       });
       await client.createIndex({
         collection_name: this.normalize(namespace),

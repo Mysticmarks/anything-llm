@@ -471,6 +471,68 @@ function toChunks(arr, size) {
   );
 }
 
+const vectorEndpointState = new Map();
+
+function getDistributedVectorDbConfig(provider) {
+  switch (provider) {
+    case "qdrant": {
+      const endpoints = (process.env.QDRANT_ENDPOINTS || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (process.env.QDRANT_ENDPOINT) {
+        endpoints.push(process.env.QDRANT_ENDPOINT);
+      }
+      const uniqueEndpoints = [...new Set(endpoints)];
+      return {
+        provider: "qdrant",
+        mode: uniqueEndpoints.length > 1 ? "cluster" : "single",
+        endpoints: uniqueEndpoints,
+        endpoint: uniqueEndpoints[0] || null,
+        shardCount: Number(process.env.QDRANT_SHARD_COUNT || 0) || null,
+        replicaCount: Number(process.env.QDRANT_REPLICA_COUNT || 0) || null,
+        readConsistency:
+          Number(process.env.QDRANT_READ_CONSISTENCY || 0) || null,
+        apiKey: process.env.QDRANT_API_KEY || null,
+      };
+    }
+    case "milvus": {
+      const endpoints = (process.env.MILVUS_ENDPOINTS || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (process.env.MILVUS_ADDRESS) {
+        endpoints.push(process.env.MILVUS_ADDRESS);
+      }
+      const uniqueEndpoints = [...new Set(endpoints)];
+      return {
+        provider: "milvus",
+        mode: uniqueEndpoints.length > 1 ? "cluster" : "single",
+        endpoints: uniqueEndpoints,
+        endpoint: uniqueEndpoints[0] || null,
+        database: process.env.MILVUS_DATABASE || null,
+        collectionShards:
+          Number(process.env.MILVUS_COLLECTION_SHARDS || 0) || null,
+        username: process.env.MILVUS_USERNAME || null,
+        password: process.env.MILVUS_PASSWORD || null,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function selectVectorDbEndpoint(provider) {
+  const config = getDistributedVectorDbConfig(provider);
+  if (!config) return null;
+  if (config.mode !== "cluster") return config.endpoint;
+  if (!config.endpoints || config.endpoints.length === 0) return null;
+  const cursor = vectorEndpointState.get(provider) || 0;
+  const endpoint = config.endpoints[cursor % config.endpoints.length];
+  vectorEndpointState.set(provider, (cursor + 1) % config.endpoints.length);
+  return endpoint;
+}
+
 module.exports = {
   getEmbeddingEngineSelection,
   maximumChunkLength,
@@ -479,4 +541,6 @@ module.exports = {
   getBaseLLMProviderModel,
   getLLMProvider,
   toChunks,
+  getDistributedVectorDbConfig,
+  selectVectorDbEndpoint,
 };

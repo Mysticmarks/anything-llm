@@ -4,6 +4,7 @@ const { WorkspaceChats } = require("../../models/workspaceChats");
 const { getVectorDbClass, getLLMProvider } = require("../helpers");
 const { writeResponseChunk } = require("../helpers/chat/responses");
 const { chatPrompt, sourceIdentifier } = require("./index");
+const { LatencyProfiler } = require("../telemetry/latencyProfiler");
 
 const { PassThrough } = require("stream");
 
@@ -15,6 +16,20 @@ async function chatSync({
   attachments = [],
   temperature = null,
 }) {
+  const span = LatencyProfiler.startSpan("chat.sync", {
+    workspace: workspace?.slug,
+    provider: workspace?.chatProvider,
+    model: workspace?.chatModel,
+    mode: workspace?.chatMode ?? "chat",
+  });
+  let spanClosed = false;
+  const finish = (metadata = {}) => {
+    if (!spanClosed) {
+      span.end(metadata);
+      spanClosed = true;
+    }
+  };
+
   const uuid = uuidv4();
   const chatMode = workspace?.chatMode ?? "chat";
   const LLMConnector = getLLMProvider({
@@ -25,188 +40,210 @@ async function chatSync({
   const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug);
   const embeddingsCount = await VectorDb.namespaceCount(workspace.slug);
 
-  // User is trying to query-mode chat a workspace that has no data in it - so
-  // we should exit early as no information can be found under these conditions.
-  if ((!hasVectorizedSpace || embeddingsCount === 0) && chatMode === "query") {
-    const textResponse =
-      workspace?.queryRefusalResponse ??
-      "There is no relevant information in this workspace to answer your query.";
-
-    await WorkspaceChats.new({
-      workspaceId: workspace.id,
-      prompt: String(prompt),
-      response: {
-        text: textResponse,
-        sources: [],
-        type: chatMode,
-        attachments,
-      },
-      include: false,
-    });
-
-    return formatJSON(
-      {
-        id: uuid,
-        type: "textResponse",
-        sources: [],
-        close: true,
-        error: null,
-        textResponse,
-      },
-      { model: workspace.slug, finish_reason: "abort" }
-    );
-  }
-
-  // If we are here we know that we are in a workspace that is:
-  // 1. Chatting in "chat" mode and may or may _not_ have embeddings
-  // 2. Chatting in "query" mode and has at least 1 embedding
-  let contextTexts = [];
-  let sources = [];
-  let pinnedDocIdentifiers = [];
-  await new DocumentManager({
-    workspace,
-    maxTokens: LLMConnector.promptWindowLimit(),
-  })
-    .pinnedDocs()
-    .then((pinnedDocs) => {
-      pinnedDocs.forEach((doc) => {
-        const { pageContent, ...metadata } = doc;
-        pinnedDocIdentifiers.push(sourceIdentifier(doc));
-        contextTexts.push(doc.pageContent);
-        sources.push({
-          text:
-            pageContent.slice(0, 1_000) +
-            "...continued on in source document...",
-          ...metadata,
+  try {
+    // User is trying to query-mode chat a workspace that has no data in it - so
+    // we should exit early as no information can be found under these conditions.
+    if ((!hasVectorizedSpace || embeddingsCount === 0) && chatMode === "query") {
+      const textResponse =
+        workspace?.queryRefusalResponse ??
+        "There is no relevant information in this workspace to answer your query.";
+  
+      await WorkspaceChats.new({
+        workspaceId: workspace.id,
+        prompt: String(prompt),
+        response: {
+          text: textResponse,
+          sources: [],
+          type: chatMode,
+          attachments,
+        },
+        include: false,
+      });
+  
+      finish({ status: "no_results" });
+      return formatJSON(
+        {
+          id: uuid,
+          type: "textResponse",
+          sources: [],
+          close: true,
+          error: null,
+          textResponse,
+        },
+        { model: workspace.slug, finish_reason: "abort" }
+      );
+    }
+  
+    // If we are here we know that we are in a workspace that is:
+    // 1. Chatting in "chat" mode and may or may _not_ have embeddings
+    // 2. Chatting in "query" mode and has at least 1 embedding
+    let contextTexts = [];
+    let sources = [];
+    let pinnedDocIdentifiers = [];
+    await new DocumentManager({
+      workspace,
+      maxTokens: LLMConnector.promptWindowLimit(),
+    })
+      .pinnedDocs()
+      .then((pinnedDocs) => {
+        pinnedDocs.forEach((doc) => {
+          const { pageContent, ...metadata } = doc;
+          pinnedDocIdentifiers.push(sourceIdentifier(doc));
+          contextTexts.push(doc.pageContent);
+          sources.push({
+            text:
+              pageContent.slice(0, 1_000) +
+              "...continued on in source document...",
+            ...metadata,
+          });
         });
       });
-    });
-
-  const vectorSearchResults =
-    embeddingsCount !== 0
-      ? await VectorDb.performSimilaritySearch({
-          namespace: workspace.slug,
-          input: String(prompt),
-          LLMConnector,
-          similarityThreshold: workspace?.similarityThreshold,
-          topN: workspace?.topN,
-          filterIdentifiers: pinnedDocIdentifiers,
-          rerank: workspace?.vectorSearchMode === "rerank",
-        })
-      : {
-          contextTexts: [],
-          sources: [],
-          message: null,
-        };
-
-  // Failed similarity search if it was run at all and failed.
-  if (!!vectorSearchResults.message) {
-    return formatJSON(
-      {
-        id: uuid,
-        type: "abort",
-        textResponse: null,
-        sources: [],
-        close: true,
+  
+    const vectorSearchResults =
+      embeddingsCount !== 0
+        ? await VectorDb.performSimilaritySearch({
+            namespace: workspace.slug,
+            input: String(prompt),
+            LLMConnector,
+            similarityThreshold: workspace?.similarityThreshold,
+            topN: workspace?.topN,
+            filterIdentifiers: pinnedDocIdentifiers,
+            rerank: workspace?.vectorSearchMode === "rerank",
+          })
+        : {
+            contextTexts: [],
+            sources: [],
+            message: null,
+          };
+  
+    // Failed similarity search if it was run at all and failed.
+    if (!!vectorSearchResults.message) {
+      finish({
+        status: "vector_search_error",
         error: vectorSearchResults.message,
-      },
-      { model: workspace.slug, finish_reason: "abort" }
+      });
+      return formatJSON(
+        {
+          id: uuid,
+          type: "abort",
+          textResponse: null,
+          sources: [],
+          close: true,
+          error: vectorSearchResults.message,
+        },
+        { model: workspace.slug, finish_reason: "abort" }
+      );
+    }
+  
+    // For OpenAI Compatible chats, we cannot do backfilling so we simply aggregate results here.
+    contextTexts = [...contextTexts, ...vectorSearchResults.contextTexts];
+    sources = [...sources, ...vectorSearchResults.sources];
+  
+    // If in query mode and no context chunks are found from search, backfill, or pins -  do not
+    // let the LLM try to hallucinate a response or use general knowledge and exit early
+    if (chatMode === "query" && contextTexts.length === 0) {
+      const textResponse =
+        workspace?.queryRefusalResponse ??
+        "There is no relevant information in this workspace to answer your query.";
+  
+      await WorkspaceChats.new({
+        workspaceId: workspace.id,
+        prompt: String(prompt),
+        response: {
+          text: textResponse,
+          sources: [],
+          type: chatMode,
+          attachments,
+        },
+        include: false,
+      });
+  
+      finish({ status: "no_results" });
+      return formatJSON(
+        {
+          id: uuid,
+          type: "textResponse",
+          sources: [],
+          close: true,
+          error: null,
+          textResponse,
+        },
+        { model: workspace.slug, finish_reason: "no_content" }
+      );
+    }
+  
+    // Compress & Assemble message to ensure prompt passes token limit with room for response
+    // and build system messages based on inputs and history.
+    const messages = await LLMConnector.compressMessages({
+      systemPrompt: systemPrompt ?? (await chatPrompt(workspace)),
+      userPrompt: String(prompt),
+      contextTexts,
+      chatHistory: history,
+      attachments,
+    });
+  
+    // Send the text completion.
+    const { textResponse, metrics } = await LLMConnector.getChatCompletion(
+      messages,
+      {
+        temperature:
+          temperature ?? workspace?.openAiTemp ?? LLMConnector.defaultTemp,
+      }
     );
-  }
-
-  // For OpenAI Compatible chats, we cannot do backfilling so we simply aggregate results here.
-  contextTexts = [...contextTexts, ...vectorSearchResults.contextTexts];
-  sources = [...sources, ...vectorSearchResults.sources];
-
-  // If in query mode and no context chunks are found from search, backfill, or pins -  do not
-  // let the LLM try to hallucinate a response or use general knowledge and exit early
-  if (chatMode === "query" && contextTexts.length === 0) {
-    const textResponse =
-      workspace?.queryRefusalResponse ??
-      "There is no relevant information in this workspace to answer your query.";
-
-    await WorkspaceChats.new({
+  
+    if (!textResponse) {
+      finish({ status: "no_content" });
+      return formatJSON(
+        {
+          id: uuid,
+          type: "textResponse",
+          sources: [],
+          close: true,
+          error: "No text completion could be completed with this input.",
+          textResponse: null,
+        },
+        { model: workspace.slug, finish_reason: "no_content", usage: metrics }
+      );
+    }
+  
+    const { chat } = await WorkspaceChats.new({
       workspaceId: workspace.id,
       prompt: String(prompt),
       response: {
         text: textResponse,
-        sources: [],
+        sources,
         type: chatMode,
+        metrics,
         attachments,
       },
-      include: false,
     });
-
-    return formatJSON(
+  
+    const payload = formatJSON(
       {
         id: uuid,
         type: "textResponse",
-        sources: [],
         close: true,
         error: null,
+        chatId: chat.id,
         textResponse,
+        sources,
       },
-      { model: workspace.slug, finish_reason: "no_content" }
+      { model: workspace.slug, finish_reason: "stop", usage: metrics }
     );
+    finish({
+      status: "ok",
+      provider: workspace?.chatProvider,
+      model: workspace?.chatModel,
+      mode: chatMode,
+      attachments: attachments.length,
+      sources: sources.length,
+      totalTokens: metrics?.total_tokens,
+    });
+    return payload;
+  } catch (error) {
+    finish({ status: "error", error: error?.message || error });
+    throw error;
   }
-
-  // Compress & Assemble message to ensure prompt passes token limit with room for response
-  // and build system messages based on inputs and history.
-  const messages = await LLMConnector.compressMessages({
-    systemPrompt: systemPrompt ?? (await chatPrompt(workspace)),
-    userPrompt: String(prompt),
-    contextTexts,
-    chatHistory: history,
-    attachments,
-  });
-
-  // Send the text completion.
-  const { textResponse, metrics } = await LLMConnector.getChatCompletion(
-    messages,
-    {
-      temperature:
-        temperature ?? workspace?.openAiTemp ?? LLMConnector.defaultTemp,
-    }
-  );
-
-  if (!textResponse) {
-    return formatJSON(
-      {
-        id: uuid,
-        type: "textResponse",
-        sources: [],
-        close: true,
-        error: "No text completion could be completed with this input.",
-        textResponse: null,
-      },
-      { model: workspace.slug, finish_reason: "no_content", usage: metrics }
-    );
-  }
-
-  const { chat } = await WorkspaceChats.new({
-    workspaceId: workspace.id,
-    prompt: String(prompt),
-    response: {
-      text: textResponse,
-      sources,
-      type: chatMode,
-      metrics,
-      attachments,
-    },
-  });
-
-  return formatJSON(
-    {
-      id: uuid,
-      type: "textResponse",
-      close: true,
-      error: null,
-      chatId: chat.id,
-      textResponse,
-      sources,
-    },
-    { model: workspace.slug, finish_reason: "stop", usage: metrics }
-  );
 }
 
 async function streamChat({
