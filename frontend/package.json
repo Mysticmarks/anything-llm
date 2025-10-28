@@ -9,7 +9,8 @@
     "build": "vite build && node scripts/postbuild.js",
     "lint": "yarn prettier --ignore-path ../.prettierignore --write ./src",
     "preview": "vite preview",
-    "test:e2e": "npx @playwright/test@1.45.0 test"
+    "test:e2e": "npx @playwright/test@1.45.0 test",
+    "test": "yarn test:e2e"
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
