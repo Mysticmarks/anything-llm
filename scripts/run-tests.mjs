@@ -22,7 +22,31 @@ function runCommand(command, args, options = {}) {
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 const yarn = process.platform === "win32" ? "yarn.cmd" : "yarn";
 
-runCommand(npx, ["jest"], { cwd: repoRoot });
-runCommand(yarn, ["--cwd", path.join(repoRoot, "frontend"), "test:e2e"], {
-  cwd: repoRoot,
-});
+const scopeRunners = {
+  server: () =>
+    runCommand(npx, ["jest", "--testPathPattern", "server/__tests__"], { cwd: repoRoot }),
+  collector: () =>
+    runCommand(npx, ["jest", "--testPathPattern", "collector/__tests__"], { cwd: repoRoot }),
+  frontend: () =>
+    runCommand(yarn, ["--cwd", path.join(repoRoot, "frontend"), "test:e2e"], {
+      cwd: repoRoot,
+    }),
+};
+
+const scopes = process.argv.slice(2).filter(Boolean);
+
+if (scopes.length === 0) {
+  runCommand(npx, ["jest"], { cwd: repoRoot });
+  scopeRunners.frontend();
+} else {
+  for (const scope of scopes) {
+    const runner = scopeRunners[scope];
+    if (!runner) {
+      console.error(
+        `Unknown test scope "${scope}". Available scopes: ${Object.keys(scopeRunners).join(", ")}.`
+      );
+      process.exit(1);
+    }
+    runner();
+  }
+}
