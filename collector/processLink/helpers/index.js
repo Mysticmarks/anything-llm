@@ -2,8 +2,9 @@ const path = require("path");
 const { validURL } = require("../../utils/url");
 const { processSingleFile } = require("../../processSingleFile");
 const { downloadURIToFile } = require("../../utils/downloadURIToFile");
-const { ACCEPTED_MIMES } = require("../../utils/constants");
+const { ACCEPTED_MIMES, WATCH_DIRECTORY } = require("../../utils/constants");
 const { validYoutubeVideoUrl } = require("../../utils/url");
+const { trashFile, isWithin } = require("../../utils/files");
 
 /**
  * Get the content type of a resource
@@ -120,7 +121,11 @@ async function determineContentType(uri) {
  * @param {boolean} saveAsDocument - Whether to save the content as a document. Default is true
  * @returns {Promise<{success: boolean, reason: string|null, documents: Object[], content: string|null, saveAsDocument: boolean}>} - The content of the file
  */
-async function processAsFile({ uri, saveAsDocument = true }) {
+async function processAsFile({
+  uri,
+  saveAsDocument = true,
+  cleanupAfterProcessing = false,
+}) {
   const fileContentResult = await downloadURIToFile(uri);
   if (!fileContentResult.success)
     return returnResult({
@@ -132,6 +137,7 @@ async function processAsFile({ uri, saveAsDocument = true }) {
     });
 
   const fileFilePath = fileContentResult.fileLocation;
+  const shouldCleanup = cleanupAfterProcessing === true;
   const targetFilename = path.basename(fileFilePath);
 
   /**
@@ -141,12 +147,18 @@ async function processAsFile({ uri, saveAsDocument = true }) {
    * that will be deleted by the cleanup-orphan-documents job that runs frequently. The trade off
    * is that since it still is in FS we can debug its output or even potentially reuse it for other purposes.
    *
-   * TODO: Improve this process via a new option that will instantly delete the file after processing
-   * if we find we dont need this file ever after processing.
+   * When cleanupAfterProcessing is enabled, the temporary file is removed immediately after parsing
+   * so callers that only need the extracted text do not have to wait for the background cleanup job.
    */
-  const processSingleFileResult = await processSingleFile(targetFilename, {
-    parseOnly: saveAsDocument === false,
-  });
+  let processSingleFileResult;
+  try {
+    processSingleFileResult = await processSingleFile(targetFilename, {
+      parseOnly: saveAsDocument === false,
+    });
+  } finally {
+    cleanupDownloadedFile(fileFilePath, shouldCleanup);
+  }
+
   if (!processSingleFileResult.success) {
     return returnResult({
       success: false,
@@ -158,7 +170,7 @@ async function processAsFile({ uri, saveAsDocument = true }) {
   }
 
   // If we intend to return only the text content, return the content from the file
-  // and then delete the file - otherwise it will be saved as a document
+  // the file itself is cleaned up when requested
   if (!saveAsDocument) {
     return returnResult({
       success: true,
@@ -170,9 +182,33 @@ async function processAsFile({ uri, saveAsDocument = true }) {
   return processSingleFileResult;
 }
 
+function cleanupDownloadedFile(filePath, shouldCleanup) {
+  if (!shouldCleanup || !filePath) return;
+
+  try {
+    const resolvedFilePath = path.resolve(filePath);
+    const watchDirectory = path.resolve(WATCH_DIRECTORY);
+    if (resolvedFilePath === watchDirectory) return;
+    const withinHotDir =
+      resolvedFilePath === watchDirectory ||
+      isWithin(watchDirectory, resolvedFilePath);
+    if (!withinHotDir) {
+      console.warn(
+        `Skipping cleanup for unexpected file outside hotdir: ${resolvedFilePath}`
+      );
+      return;
+    }
+
+    trashFile(resolvedFilePath);
+  } catch (error) {
+    console.error(`Failed to cleanup downloaded file ${filePath}:`, error);
+  }
+}
+
 module.exports = {
   returnResult,
   getContentTypeFromURL,
   determineContentType,
   processAsFile,
+  cleanupDownloadedFile,
 };
