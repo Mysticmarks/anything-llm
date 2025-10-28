@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useCallback } from "react";
 import ChatHistory from "./ChatHistory";
 import { CLEAR_ATTACHMENTS_EVENT, DndUploaderContext } from "./DnDWrapper";
 import PromptInput, {
@@ -12,10 +12,10 @@ import { SidebarMobileHeader } from "../../Sidebar";
 import { useParams } from "react-router-dom";
 import { v4 } from "uuid";
 import handleSocketResponse, {
-  websocketURI,
   AGENT_SESSION_END,
   AGENT_SESSION_START,
 } from "@/utils/chat/agent";
+import useWorkspaceChatSocket from "../hooks/useWorkspaceChatSocket";
 import DnDFileUploaderWrapper from "./DnDWrapper";
 import SpeechRecognition, {
   useSpeechRecognition,
@@ -29,7 +29,6 @@ export default function ChatContainer({ workspace, knownHistory = [] }) {
   const [loadingResponse, setLoadingResponse] = useState(false);
   const [chatHistory, setChatHistory] = useState(knownHistory);
   const [socketId, setSocketId] = useState(null);
-  const [websocket, setWebsocket] = useState(null);
   const { files, parseAttachments } = useContext(DndUploaderContext);
 
   // Maintain state of message from whatever is in PromptInput
@@ -179,6 +178,69 @@ export default function ChatContainer({ workspace, knownHistory = [] }) {
     setLoadingResponse(true);
   };
 
+  const handleAgentSessionStart = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(AGENT_SESSION_START));
+    window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
+  }, []);
+
+  const handleAgentSessionComplete = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+    setChatHistory((prev) => [
+      ...prev.filter((msg) => !!msg.content),
+      {
+        uuid: v4(),
+        type: "statusResponse",
+        content: "Agent session complete.",
+        role: "assistant",
+        sources: [],
+        closed: true,
+        error: null,
+        animate: false,
+        pending: false,
+      },
+    ]);
+    setLoadingResponse(false);
+    setSocketId(null);
+  }, [setChatHistory]);
+
+  const handleAgentSessionError = useCallback(
+    (message = "Agent session ended unexpectedly.") => {
+      window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
+      setChatHistory((prev) => [
+        ...prev.filter((msg) => !!msg.content),
+        {
+          uuid: v4(),
+          type: "abort",
+          content: message,
+          role: "assistant",
+          sources: [],
+          closed: true,
+          error: message,
+          animate: false,
+          pending: false,
+        },
+      ]);
+      setLoadingResponse(false);
+      setSocketId(null);
+    },
+    [setChatHistory]
+  );
+
+  const handleStreamMessage = useCallback(
+    (socket, event) => handleSocketResponse(socket, event, setChatHistory),
+    [setChatHistory]
+  );
+
+  const { socket: websocket } = useWorkspaceChatSocket({
+    socketId,
+    onMessage: handleStreamMessage,
+    onSessionStart: handleAgentSessionStart,
+    onSessionComplete: handleAgentSessionComplete,
+    onSessionError: handleAgentSessionError,
+    setLoadingResponse,
+    abortEventName: ABORT_STREAM_EVENT,
+  });
+
   useEffect(() => {
     async function fetchReply() {
       const promptMessage =
@@ -224,80 +286,7 @@ export default function ChatContainer({ workspace, knownHistory = [] }) {
       return;
     }
     loadingResponse === true && fetchReply();
-  }, [loadingResponse, chatHistory, workspace]);
-
-  // TODO: Simplify this WSS stuff
-  useEffect(() => {
-    function handleWSS() {
-      try {
-        if (!socketId || !!websocket) return;
-        const socket = new WebSocket(
-          `${websocketURI()}/api/agent-invocation/${socketId}`
-        );
-        socket.supportsAgentStreaming = false;
-
-        window.addEventListener(ABORT_STREAM_EVENT, () => {
-          window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
-          websocket.close();
-        });
-
-        socket.addEventListener("message", (event) => {
-          setLoadingResponse(true);
-          try {
-            handleSocketResponse(socket, event, setChatHistory);
-          } catch (e) {
-            console.error("Failed to parse data");
-            window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
-            socket.close();
-          }
-          setLoadingResponse(false);
-        });
-
-        socket.addEventListener("close", (_event) => {
-          window.dispatchEvent(new CustomEvent(AGENT_SESSION_END));
-          setChatHistory((prev) => [
-            ...prev.filter((msg) => !!msg.content),
-            {
-              uuid: v4(),
-              type: "statusResponse",
-              content: "Agent session complete.",
-              role: "assistant",
-              sources: [],
-              closed: true,
-              error: null,
-              animate: false,
-              pending: false,
-            },
-          ]);
-          setLoadingResponse(false);
-          setWebsocket(null);
-          setSocketId(null);
-        });
-        setWebsocket(socket);
-        window.dispatchEvent(new CustomEvent(AGENT_SESSION_START));
-        window.dispatchEvent(new CustomEvent(CLEAR_ATTACHMENTS_EVENT));
-      } catch (e) {
-        setChatHistory((prev) => [
-          ...prev.filter((msg) => !!msg.content),
-          {
-            uuid: v4(),
-            type: "abort",
-            content: e.message,
-            role: "assistant",
-            sources: [],
-            closed: true,
-            error: e.message,
-            animate: false,
-            pending: false,
-          },
-        ]);
-        setLoadingResponse(false);
-        setWebsocket(null);
-        setSocketId(null);
-      }
-    }
-    handleWSS();
-  }, [socketId]);
+  }, [loadingResponse, chatHistory, workspace, websocket]);
 
   return (
     <div
