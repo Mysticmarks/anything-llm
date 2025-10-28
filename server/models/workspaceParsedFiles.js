@@ -5,6 +5,7 @@ const { documentsPath, directUploadsPath } = require("../utils/files");
 const { safeJsonParse } = require("../utils/http");
 const fs = require("fs");
 const path = require("path");
+const { LatencyProfiler } = require("../utils/telemetry/latencyProfiler");
 
 const WorkspaceParsedFiles = {
   create: async function ({
@@ -96,6 +97,11 @@ const WorkspaceParsedFiles = {
   },
 
   moveToDocumentsAndEmbed: async function (fileId, workspace) {
+    const span = LatencyProfiler.startSpan("ingestion.promoteParsedFile", {
+      workspace: workspace?.slug,
+      fileId,
+    });
+    let moveSpan = null;
     try {
       const parsedFile = await this.get({ id: parseInt(fileId) });
       if (!parsedFile) throw new Error("File not found");
@@ -104,6 +110,11 @@ const WorkspaceParsedFiles = {
       const metadata = safeJsonParse(parsedFile.metadata, {});
       const location = metadata.location;
       if (!location) throw new Error("No file location in metadata");
+
+      moveSpan = LatencyProfiler.startSpan("ingestion.moveFile", {
+        workspace: workspace?.slug,
+        fileId,
+      });
 
       // Get file from metadata location
       const sourceFile = path.join(directUploadsPath, path.basename(location));
@@ -118,6 +129,7 @@ const WorkspaceParsedFiles = {
       const targetPath = path.join(customDocsPath, path.basename(location));
       fs.copyFileSync(sourceFile, targetPath);
       fs.unlinkSync(sourceFile);
+      moveSpan.end({ status: "ok" });
 
       const {
         failedToEmbed = [],
@@ -136,9 +148,12 @@ const WorkspaceParsedFiles = {
         workspaceId: workspace.id,
         docpath: embedded[0],
       });
+      span.end({ status: "ok" });
       return { success: true, error: null, document };
     } catch (error) {
       console.error("Failed to move and embed file:", error);
+      moveSpan?.end({ status: "error", error: error?.message || error });
+      span.end({ status: "error", error: error?.message || error });
       return { success: false, error: error.message, document: null };
     } finally {
       // Always delete the file after processing

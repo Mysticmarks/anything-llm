@@ -3,7 +3,12 @@ const { TextSplitter } = require("../../TextSplitter");
 const { SystemSettings } = require("../../../models/systemSettings");
 const { storeVectorResult, cachedVectorInformation } = require("../../files");
 const { v4: uuidv4 } = require("uuid");
-const { toChunks, getEmbeddingEngineSelection } = require("../../helpers");
+const {
+  toChunks,
+  getEmbeddingEngineSelection,
+  getDistributedVectorDbConfig,
+  selectVectorDbEndpoint,
+} = require("../../helpers");
 const { sourceIdentifier } = require("../../chats");
 
 const QDrant = {
@@ -12,9 +17,15 @@ const QDrant = {
     if (process.env.VECTOR_DB !== "qdrant")
       throw new Error("QDrant::Invalid ENV settings");
 
+    const clusterConfig = getDistributedVectorDbConfig("qdrant");
+    const endpoint = selectVectorDbEndpoint("qdrant") ||
+      process.env.QDRANT_ENDPOINT;
+
     const client = new QdrantClient({
-      url: process.env.QDRANT_ENDPOINT,
-      ...(process.env.QDRANT_API_KEY
+      url: endpoint,
+      ...(clusterConfig?.apiKey
+        ? { apiKey: clusterConfig.apiKey }
+        : process.env.QDRANT_API_KEY
         ? { apiKey: process.env.QDRANT_API_KEY }
         : {}),
     });
@@ -125,12 +136,23 @@ const QDrant = {
       throw new Error(
         `Qdrant:getOrCreateCollection Unable to infer vector dimension from input. Open an issue on GitHub for support.`
       );
-    await client.createCollection(namespace, {
+    const clusterConfig = getDistributedVectorDbConfig("qdrant");
+    const collectionConfig = {
       vectors: {
         size: dimensions,
         distance: "Cosine",
       },
-    });
+    };
+    if (clusterConfig?.shardCount) {
+      collectionConfig.shard_number = clusterConfig.shardCount;
+    }
+    if (clusterConfig?.replicaCount) {
+      collectionConfig.replication_factor = clusterConfig.replicaCount;
+    }
+    if (clusterConfig?.readConsistency) {
+      collectionConfig.write_consistency_factor = clusterConfig.readConsistency;
+    }
+    await client.createCollection(namespace, collectionConfig);
     return await client.getCollection(namespace);
   },
   addDocumentToNamespace: async function (

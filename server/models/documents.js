@@ -5,21 +5,48 @@ const { Telemetry } = require("./telemetry");
 const { EventLogs } = require("./eventLogs");
 const { safeJsonParse } = require("../utils/http");
 const { getModelTag } = require("../endpoints/utils");
+const { LatencyProfiler } = require("../utils/telemetry/latencyProfiler");
 const { enqueueEmbeddingJob, getQueueEvents } = require(
   "../utils/queues/embedQueue"
 );
 
 async function embedDocumentsInternal(workspace, additions = [], userId = null) {
+  const pipelineSpan = LatencyProfiler.startSpan("embedding.pipeline", {
+    workspace: workspace?.slug || workspace?.id,
+    additions: additions.length,
+  });
   const VectorDb = getVectorDbClass();
-  if (additions.length === 0) return { failed: [], embedded: [] };
+  if (additions.length === 0) {
+    pipelineSpan.end({
+      status: "skipped",
+      embeddedCount: 0,
+      failedCount: 0,
+    });
+    return { failedToEmbed: [], errors: [], embedded: [] };
+  }
   const { fileData } = require("../utils/files");
   const embedded = [];
   const failedToEmbed = [];
   const errors = new Set();
 
   for (const path of additions) {
+    const documentSpan = LatencyProfiler.startSpan("embedding.document", {
+      workspace: workspace?.slug || workspace?.id,
+      path,
+    });
+    const loadSpan = LatencyProfiler.startSpan("embedding.loadFile", {
+      path,
+    });
     const data = await fileData(path);
-    if (!data) continue;
+    loadSpan.end({
+      status: data ? "ok" : "missing",
+      byteLength: data?.pageContent?.length || 0,
+    });
+
+    if (!data) {
+      documentSpan.end({ status: "missing" });
+      continue;
+    }
 
     const docId = uuidv4();
     const { pageContent, ...metadata } = data;
@@ -31,11 +58,17 @@ async function embedDocumentsInternal(workspace, additions = [], userId = null) 
       metadata: JSON.stringify(metadata),
     };
 
+    const vectorSpan = LatencyProfiler.startSpan("embedding.vectorize", {
+      workspace: workspace?.slug || workspace?.id,
+      path,
+      docId,
+    });
     const { vectorized, error } = await VectorDb.addDocumentToNamespace(
       workspace.slug,
       { ...data, docId },
       path
     );
+    vectorSpan.end({ status: vectorized ? "ok" : "error", error });
 
     if (!vectorized) {
       console.error(
@@ -44,14 +77,26 @@ async function embedDocumentsInternal(workspace, additions = [], userId = null) 
       );
       failedToEmbed.push(metadata?.title || newDoc.filename);
       errors.add(error);
+      documentSpan.end({ status: "error", error });
       continue;
     }
 
     try {
+      const persistSpan = LatencyProfiler.startSpan(
+        "embedding.persistMetadata",
+        {
+          workspace: workspace?.slug || workspace?.id,
+          path,
+          docId,
+        }
+      );
       await prisma.workspace_documents.create({ data: newDoc });
+      persistSpan.end({ status: "ok" });
       embedded.push(path);
+      documentSpan.end({ status: "ok" });
     } catch (error) {
       console.error(error.message);
+      documentSpan.end({ status: "error", error: error.message });
     }
   }
 
@@ -70,7 +115,13 @@ async function embedDocumentsInternal(workspace, additions = [], userId = null) 
     },
     userId
   );
-  return { failedToEmbed, errors: Array.from(errors), embedded };
+  const result = { failedToEmbed, errors: Array.from(errors), embedded };
+  pipelineSpan.end({
+    status: failedToEmbed.length ? "partial" : "ok",
+    embeddedCount: embedded.length,
+    failedCount: failedToEmbed.length,
+  });
+  return result;
 }
 
 const Document = {
@@ -158,6 +209,38 @@ const Document = {
 
     if (skipQueue) {
       return embedDocumentsInternal(workspace, additions, userId);
+    }
+
+    const shouldUseWorkerPool =
+      process.env.USE_EMBEDDING_WORKER_POOL === "true" ||
+      !!process.env.EMBEDDING_POOL_MODE;
+
+    if (shouldUseWorkerPool) {
+      const { getEmbeddingWorkerPool } = require("../utils/workers");
+      const pool = getEmbeddingWorkerPool();
+      const job = pool.enqueue(
+        {
+          workspaceId: workspace.id,
+          additions,
+          userId,
+        },
+        {
+          timeout: Number(process.env.EMBEDDING_POOL_TIMEOUT_MS || 120000),
+        }
+      );
+
+      if (fireAndForget) {
+        job.result.catch((error) =>
+          console.error(
+            `\x1b[31m[Document]\x1b[0m Worker pool embedding job failed: ${
+              error?.message || error
+            }`
+          )
+        );
+        return { jobId: job.id };
+      }
+
+      return await job.result;
     }
 
     let job = null;

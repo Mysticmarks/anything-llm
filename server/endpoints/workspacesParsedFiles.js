@@ -11,6 +11,7 @@ const { validWorkspaceSlug } = require("../utils/middleware/validWorkspace");
 const { CollectorApi } = require("../utils/collectorApi");
 const { WorkspaceThread } = require("../models/workspaceThread");
 const { WorkspaceParsedFiles } = require("../models/workspaceParsedFiles");
+const { LatencyProfiler } = require("../utils/telemetry/latencyProfiler");
 
 function workspaceParsedFilesEndpoints(app) {
   if (!app) return;
@@ -71,6 +72,10 @@ function workspaceParsedFilesEndpoints(app) {
     ],
     async function (request, response) {
       const { fileId = null } = request.params;
+      const span = LatencyProfiler.startSpan("ingestion.embedParsedFile", {
+        workspace: response.locals.workspace?.slug,
+        fileId,
+      });
       try {
         const user = await userFromSession(request, response);
         const workspace = response.locals.workspace;
@@ -107,6 +112,7 @@ function workspaceParsedFilesEndpoints(app) {
       } finally {
         if (!fileId) return;
         await WorkspaceParsedFiles.delete({ id: parseInt(fileId) });
+        span.end({ status: "completed" });
       }
     }
   );
@@ -120,11 +126,16 @@ function workspaceParsedFilesEndpoints(app) {
       validWorkspaceSlug,
     ],
     async function (request, response) {
+      let span = null;
       try {
         const user = await userFromSession(request, response);
         const workspace = response.locals.workspace;
         const Collector = new CollectorApi();
         const { originalname } = request.file;
+        span = LatencyProfiler.startSpan("ingestion.parse", {
+          workspace: workspace?.slug,
+          filename: originalname,
+        });
         const processingOnline = await Collector.online();
 
         if (!processingOnline) {
@@ -183,13 +194,23 @@ function workspaceParsedFilesEndpoints(app) {
           user?.id
         );
 
-        return response.status(200).json({
+        const payload = {
           success: true,
           error: null,
           files,
-        });
+        };
+        span?.end({ status: "ok", documents: files.length });
+        return response.status(200).json(payload);
       } catch (e) {
         console.error(e.message, e);
+        if (span) {
+          span.end({ status: "error", error: e?.message || e });
+        } else {
+          LatencyProfiler.addSpan("ingestion.parse", 0, {
+            status: "error",
+            error: e?.message || e,
+          });
+        }
         return response.sendStatus(500).end();
       }
     }

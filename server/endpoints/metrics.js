@@ -1,15 +1,16 @@
 const { validApiKey } = require("../utils/middleware/validApiKey");
-const { gatherAllMetrics } = require("../utils/queues/metrics");
+const { gatherPerformanceSnapshot } = require("../utils/telemetry/performance");
 
 function metricsEndpoints(app) {
   if (!app) return;
 
   app.get("/metrics", [validApiKey], async (_, response) => {
     try {
-      const queues = await gatherAllMetrics();
+      const performance = await gatherPerformanceSnapshot();
       response.status(200).json({
         success: true,
-        queues,
+        queues: performance.queues,
+        latency: performance.latency,
       });
     } catch (error) {
       console.error(error);
