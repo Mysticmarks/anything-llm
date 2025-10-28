@@ -1,12 +1,27 @@
-const IORedis = require("ioredis");
+const useMockRedis =
+  process.env.COLLECTOR_MOCK_REDIS === "true" ||
+  (process.env.REDIS_URL || "").startsWith("mock://");
 
-const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const IORedis = useMockRedis ? require("ioredis-mock") : require("ioredis");
+
+const redisUrl = useMockRedis
+  ? process.env.REDIS_URL || "mock://local"
+  : process.env.REDIS_URL || "redis://127.0.0.1:6379";
 let connection = null;
 let ready = false;
 let initializing = null;
 
 function ensureClient() {
   if (connection) return connection;
+  if (useMockRedis) {
+    connection = new IORedis();
+    ready = true;
+    console.log(
+      "\x1b[36m[CollectorQueue]\x1b[0m Using in-memory Redis mock for tests"
+    );
+    return connection;
+  }
+
   connection = new IORedis(redisUrl, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
@@ -28,6 +43,7 @@ function ensureClient() {
 
 async function ensureConnection() {
   ensureClient();
+  if (useMockRedis) return true;
   if (ready) return true;
   if (initializing) return initializing;
 
