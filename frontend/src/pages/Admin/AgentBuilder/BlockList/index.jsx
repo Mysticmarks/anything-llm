@@ -1,15 +1,5 @@
 import React from "react";
-import {
-  X,
-  CaretUp,
-  CaretDown,
-  Globe,
-  Browser,
-  Brain,
-  Flag,
-  Info,
-  BracketsCurly,
-} from "@phosphor-icons/react";
+import { X, CaretUp, CaretDown } from "@phosphor-icons/react";
 import { Tooltip } from "react-tooltip";
 import StartNode from "../nodes/StartNode";
 import ApiCallNode from "../nodes/ApiCallNode";
@@ -20,129 +10,7 @@ import LLMInstructionNode from "../nodes/LLMInstructionNode";
 import FinishNode from "../nodes/FinishNode";
 import WebScrapingNode from "../nodes/WebScrapingNode";
 import FlowInfoNode from "../nodes/FlowInfoNode";
-
-const BLOCK_TYPES = {
-  FLOW_INFO: "flowInfo",
-  START: "start",
-  API_CALL: "apiCall",
-  // WEBSITE: "website", // Temporarily disabled
-  // FILE: "file", // Temporarily disabled
-  // CODE: "code", // Temporarily disabled
-  LLM_INSTRUCTION: "llmInstruction",
-  WEB_SCRAPING: "webScraping",
-  FINISH: "finish",
-};
-
-const BLOCK_INFO = {
-  [BLOCK_TYPES.FLOW_INFO]: {
-    label: "Flow Information",
-    icon: <Info className="w-5 h-5 text-theme-text-primary" />,
-    description: "Basic flow information",
-    defaultConfig: {
-      name: "",
-      description: "",
-    },
-    getSummary: (config) => config.name || "Untitled Flow",
-  },
-  [BLOCK_TYPES.START]: {
-    label: "Flow Variables",
-    icon: <BracketsCurly className="w-5 h-5 text-theme-text-primary" />,
-    description: "Configure agent variables and settings",
-    getSummary: (config) => {
-      const varCount = config.variables?.filter((v) => v.name)?.length || 0;
-      return `${varCount} variable${varCount !== 1 ? "s" : ""} defined`;
-    },
-  },
-  [BLOCK_TYPES.API_CALL]: {
-    label: "API Call",
-    icon: <Globe className="w-5 h-5 text-theme-text-primary" />,
-    description: "Make an HTTP request",
-    defaultConfig: {
-      url: "",
-      method: "GET",
-      headers: [],
-      bodyType: "json",
-      body: "",
-      formData: [],
-      responseVariable: "",
-      directOutput: false,
-    },
-    getSummary: (config) =>
-      `${config.method || "GET"} ${config.url || "(no URL)"}`,
-  },
-  // TODO: Implement website, file, and code blocks
-  /* [BLOCK_TYPES.WEBSITE]: {
-    label: "Open Website",
-    icon: <Browser className="w-5 h-5 text-theme-text-primary" />,
-    description: "Navigate to a URL",
-    defaultConfig: {
-      url: "",
-      selector: "",
-      action: "read",
-      value: "",
-      resultVariable: "",
-    },
-    getSummary: (config) =>
-      `${config.action || "read"} from ${config.url || "(no URL)"}`,
-  },
-  [BLOCK_TYPES.FILE]: {
-    label: "Open File",
-    icon: <File className="w-5 h-5 text-theme-text-primary" />,
-    description: "Read or write to a file",
-    defaultConfig: {
-      path: "",
-      operation: "read",
-      content: "",
-      resultVariable: "",
-    },
-    getSummary: (config) =>
-      `${config.operation || "read"} ${config.path || "(no path)"}`,
-  },
-  [BLOCK_TYPES.CODE]: {
-    label: "Code Execution",
-    icon: <Code className="w-5 h-5 text-theme-text-primary" />,
-    description: "Execute code snippets",
-    defaultConfig: {
-      language: "javascript",
-      code: "",
-      resultVariable: "",
-    },
-    getSummary: (config) => `Run ${config.language || "javascript"} code`,
-  },
-  */
-  [BLOCK_TYPES.LLM_INSTRUCTION]: {
-    label: "LLM Instruction",
-    icon: <Brain className="w-5 h-5 text-theme-text-primary" />,
-    description: "Process data using LLM instructions",
-    defaultConfig: {
-      instruction: "",
-      resultVariable: "",
-      directOutput: false,
-    },
-    getSummary: (config) => config.instruction || "No instruction",
-  },
-  [BLOCK_TYPES.WEB_SCRAPING]: {
-    label: "Web Scraping",
-    icon: <Browser className="w-5 h-5 text-theme-text-primary" />,
-    description: "Scrape content from a webpage",
-    defaultConfig: {
-      url: "",
-      captureAs: "text",
-      querySelector: "",
-      resultVariable: "",
-      directOutput: false,
-    },
-    getSummary: (config) => config.url || "No URL specified",
-  },
-  [BLOCK_TYPES.FINISH]: {
-    label: "Flow Complete",
-    icon: <Flag className="w-4 h-4" />,
-    description: "End of agent flow",
-    getSummary: () => "Flow will end here",
-    defaultConfig: {},
-    renderConfig: () => null,
-  },
-};
+import { BLOCK_TYPES, BLOCK_INFO } from "./blockInfo";
 
 export default function BlockList({
   blocks,
@@ -246,9 +114,10 @@ export default function BlockList({
             >
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-white/10 light:bg-white flex items-center justify-center">
-                  {React.cloneElement(BLOCK_INFO[block.type].icon, {
-                    className: "w-4 h-4 text-white",
-                  })}
+                  {BLOCK_INFO[block.type].icon &&
+                    React.createElement(BLOCK_INFO[block.type].icon, {
+                      className: "w-4 h-4 text-white",
+                    })}
                 </div>
                 <div className="flex-1 text-left min-w-0 max-w-[115px]">
                   <span className="text-sm font-medium text-white block">

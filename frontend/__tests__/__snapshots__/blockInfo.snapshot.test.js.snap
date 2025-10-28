@@ -1,0 +1,60 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Agent builder block definitions includes website, file, and code blocks 1`] = `
+{
+  "apiCall": {
+    "description": "Make an HTTP request",
+    "hasDefaultConfig": true,
+    "label": "API Call",
+    "summaryExample": "GET (no URL)",
+  },
+  "code": {
+    "description": "Run custom code snippets",
+    "hasDefaultConfig": true,
+    "label": "Code Execution",
+    "summaryExample": "Run javascript code",
+  },
+  "file": {
+    "description": "Read from or write to local storage",
+    "hasDefaultConfig": true,
+    "label": "File",
+    "summaryExample": "read (no path)",
+  },
+  "finish": {
+    "description": "End of agent flow",
+    "hasDefaultConfig": true,
+    "label": "Flow Complete",
+    "summaryExample": "Flow will end here",
+  },
+  "flowInfo": {
+    "description": "Basic flow information",
+    "hasDefaultConfig": true,
+    "label": "Flow Information",
+    "summaryExample": "Untitled Flow",
+  },
+  "llmInstruction": {
+    "description": "Process data using LLM instructions",
+    "hasDefaultConfig": true,
+    "label": "LLM Instruction",
+    "summaryExample": "No instruction",
+  },
+  "start": {
+    "description": "Configure agent variables and settings",
+    "hasDefaultConfig": false,
+    "label": "Flow Variables",
+    "summaryExample": "0 variables defined",
+  },
+  "webScraping": {
+    "description": "Scrape content from a webpage",
+    "hasDefaultConfig": true,
+    "label": "Web Scraping",
+    "summaryExample": "No URL specified",
+  },
+  "website": {
+    "description": "Read or interact with a web page",
+    "hasDefaultConfig": true,
+    "label": "Open Website",
+    "summaryExample": "read (no URL)",
+  },
+}
+`;
