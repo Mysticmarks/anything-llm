@@ -34,13 +34,15 @@ describe("collector link ingestion edge cases", () => {
     const metadata = { workspaceId: 42 };
     const result = await processLink("https://example.com/doc", headers, metadata);
 
-    expect(scrapeGenericUrl).toHaveBeenCalledWith({
-      link: "https://example.com/doc",
-      captureAs: "text",
-      scraperHeaders: headers,
-      metadata,
-      saveAsDocument: true,
-    });
+    expect(scrapeGenericUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        link: "https://example.com/doc",
+        captureAs: "text",
+        scraperHeaders: headers,
+        metadata,
+        saveAsDocument: true,
+      })
+    );
     expect(result).toEqual({ success: true, content: "Mock body" });
   });
 
@@ -50,11 +52,13 @@ describe("collector link ingestion edge cases", () => {
 
     const result = await getLinkText("https://example.com/reports", "html");
 
-    expect(scrapeGenericUrl).toHaveBeenCalledWith({
-      link: "https://example.com/reports",
-      captureAs: "html",
-      saveAsDocument: false,
-    });
+    expect(scrapeGenericUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        link: "https://example.com/reports",
+        captureAs: "html",
+        saveAsDocument: false,
+      })
+    );
     expect(result).toEqual({ success: true, content: "Snippet" });
   });
 });

@@ -31,11 +31,17 @@ async function scrapeGenericUrl({
   scraperHeaders = {},
   metadata = {},
   saveAsDocument = true,
+  cleanupAfterProcessing = null,
 }) {
   /** @type {'web' | 'file' | 'youtube'} */
   console.log(`-- Working URL ${link} => (captureAs: ${captureAs}) --`);
   let { contentType, processVia } = await determineContentType(link);
   console.log(`-- URL determined to be ${contentType} (${processVia}) --`);
+
+  const shouldCleanupDownloads =
+    cleanupAfterProcessing === null
+      ? saveAsDocument === false
+      : cleanupAfterProcessing;
 
   /**
    * When the content is a file or a YouTube video, we can use the existing processing functions
@@ -43,7 +49,11 @@ async function scrapeGenericUrl({
    * so we can return the content immediately.
    */
   if (processVia === "file")
-    return await processAsFile({ uri: link, saveAsDocument });
+    return await processAsFile({
+      uri: link,
+      saveAsDocument,
+      cleanupAfterProcessing: shouldCleanupDownloads,
+    });
   else if (processVia === "youtube")
     return await loadYouTubeTranscript(
       { url: link },
