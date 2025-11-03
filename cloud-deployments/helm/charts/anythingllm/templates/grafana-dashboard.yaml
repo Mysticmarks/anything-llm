@@ -1,0 +1,92 @@
+{{- if and .Values.metrics.enabled .Values.metrics.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "anythingllm.fullname" . }}-dashboard
+  labels:
+    {{- include "anythingllm.labels" . | nindent 4 }}
+    {{- with .Values.metrics.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    grafana_dashboard: "1"
+  {{- with .Values.metrics.grafanaDashboard.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+data:
+  anythingllm-observability.json: |
+    {
+      "title": "AnythingLLM Health",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "CPU Utilization",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "avg(rate(container_cpu_usage_seconds_total{namespace='{{ .Release.Namespace }}', pod=~'{{ include \"anythingllm.fullname\" . }}.*'}[5m])) * 100",
+              "legendFormat": "CPU %"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "percent" },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Memory Usage",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "avg(container_memory_working_set_bytes{namespace='{{ .Release.Namespace }}', pod=~'{{ include \"anythingllm.fullname\" . }}.*'})",
+              "legendFormat": "Memory"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "bytes" },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP Request Rate",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_total{namespace='{{ .Release.Namespace }}', pod=~'{{ include \"anythingllm.fullname\" . }}.*'}[5m]))",
+              "legendFormat": "req/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "reqps" },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Work Queue Depth",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "max(queue_jobs_ready{namespace='{{ .Release.Namespace }}', pod=~'{{ include \"anythingllm.fullname\" . }}.*'})",
+              "legendFormat": "jobs"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short" },
+            "overrides": []
+          }
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      }
+    }
+{{- end }}

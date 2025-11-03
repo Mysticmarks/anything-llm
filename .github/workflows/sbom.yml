@@ -1,0 +1,66 @@
+name: Generate & Publish SBOM
+
+on:
+  push:
+    branches: ["master"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  sbom:
+    name: Build SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM for container image
+        id: image-sbom
+        uses: anchore/sbom-action@v0
+        with:
+          path: docker/Dockerfile
+          format: spdx-json
+          artifact-name: anythingllm-docker-image
+
+      - name: Generate SBOM for Node workspaces
+        id: node-sbom
+        run: |
+          mkdir -p sbom
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            anchore/syft:latest \
+            packages dir:/workspace/server -o spdx-json=sbom/server.spdx.json
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            anchore/syft:latest \
+            packages dir:/workspace/frontend -o spdx-json=sbom/frontend.spdx.json
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            anchore/syft:latest \
+            packages dir:/workspace/collector -o spdx-json=sbom/collector.spdx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: anythingllm-sbom
+          path: |
+            ${{ steps.image-sbom.outputs.sbom }}
+            sbom/server.spdx.json
+            sbom/frontend.spdx.json
+            sbom/collector.spdx.json
+
+      - name: Install Cosign
+        if: github.event_name == 'release' || github.ref == 'refs/heads/master'
+        uses: sigstore/cosign-installer@v3.5.0
+
+      - name: Cosign attest SBOM
+        if: github.event_name == 'release' || github.ref == 'refs/heads/master'
+        env:
+          COSIGN_YES: "true"
+        run: |
+          cosign attest --predicate ${{ steps.image-sbom.outputs.sbom }} --type spdx --keyless --repository ghcr.io/${{ github.repository }}
