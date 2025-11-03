@@ -8,8 +8,23 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - "server/**.js"
-      - "collector/**.js"
+      - ".github/workflows/**"
+      - "server/**"
+      - "collector/**"
+      - "frontend/**"
+      - "scripts/**"
+      - "__tests__/**"
+      - "server/__tests__/**"
+      - "collector/__tests__/**"
+      - "frontend/tests/**"
+      - "package.json"
+      - "yarn.lock"
+      - "server/package.json"
+      - "server/yarn.lock"
+      - "collector/package.json"
+      - "collector/yarn.lock"
+      - "frontend/package.json"
+      - "frontend/yarn.lock"
 
 jobs:
   run-script:
@@ -87,11 +102,16 @@ jobs:
       - name: Setup environment and Prisma
         run: yarn setup:envs && yarn prisma:setup
 
-      - name: Run test suites
-        run: yarn test
+      - name: Run test suites with coverage
+        run: yarn test:coverage
 
-      - name: Run collector ingestion tests
-        run: yarn test collector
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage
+          if-no-files-found: ignore
 
       - name: Build frontend for E2E tests
         run: cd frontend && yarn build
