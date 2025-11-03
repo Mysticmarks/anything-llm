@@ -6,6 +6,10 @@ metadata:
     {{- include "anythingllm.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "anythingllm.selectorLabels" . | nindent 6 }}
@@ -30,10 +34,6 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- with .Values.initContainers }}
       initContainers:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.strategy }}
-      strategy:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:

@@ -9,6 +9,18 @@
 </div>
 
 <p align="center">
+  <a href="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/dev-build.yaml" target="_blank">
+    <img src="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/dev-build.yaml/badge.svg?event=push" alt="Build status" />
+  </a>
+  <a href="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/run-tests.yaml" target="_blank">
+    <img src="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/run-tests.yaml/badge.svg?event=push" alt="Test status" />
+  </a>
+  <a href="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/build-and-push-image.yaml" target="_blank">
+    <img src="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/build-and-push-image.yaml/badge.svg?event=push" alt="Container release status" />
+  </a>
+</p>
+
+<p align="center">
     <b>AnythingLLM:</b> The all-in-one AI app you were looking for.<br />
     Chat with your docs, use AI Agents, hyper-configurable, multi-user, & no frustrating setup required.
 </p>
