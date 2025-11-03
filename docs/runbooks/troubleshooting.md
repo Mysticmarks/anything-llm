@@ -3,6 +3,18 @@
 This runbook captures the minimum steps to validate and restore the three core AnythingLLM services when production alarms fire.
 Always annotate the incident timeline in your monitoring system and link back to the relevant GitHub issue.
 
+## 0. Environment setup failures
+
+1. Provision backing services
+   - Launch the dependency containers with `yarn provision:deps`. The script starts Redis by default and will automatically include Postgres, Qdrant, or Chroma when the corresponding environment variables are configured. Override with flags such as `--with-postgres` if you need to force additional services locally.
+   - Inspect container health with `docker compose -f docker/dependencies.compose.yml ps` whenever diagnostics report connectivity issues.
+2. Review startup diagnostics
+   - Both the API server and collector emit `[StartupDiagnostics]` logs before accepting traffic. Failures generally indicate missing secrets (`JWT_SECRET`, `SIG_KEY`, `SIG_SALT`), unreadable TLS material, or an unreachable Redis endpoint.
+   - Update the affected `.env` file or restart the dependency containers, then relaunch the service to re-run the diagnostic checks.
+3. Run the onboarding smoke test
+   - `yarn setup` now finishes by executing `scripts/onboarding-smoke.mjs`, which boots the stack and waits for `/api/health` plus the frontend preview to respond with HTML. Re-run the verification at any time with `yarn onboarding:smoke`.
+   - To triage failures, confirm Redis is reachable, check the server logs for diagnostic errors, and ensure no other process is holding ports 3001 or 4173. Set `SKIP_ONBOARDING_SMOKE=true` temporarily if you must defer the smoke test during scripted installs.
+
 ## 1. API server degradation
 
 1. Confirm deployment metadata

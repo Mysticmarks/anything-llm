@@ -35,7 +35,9 @@
     "generate::gcp_deployment": "node cloud-deployments/gcp/deployment/generate.mjs",
     "verify:translations": "cd frontend/src/locales && node verifyTranslations.mjs",
     "normalize:translations": "cd frontend/src/locales && node normalizeEn.mjs && cd ../../.. && yarn lint && yarn verify:translations",
-    "test:coverage": "node ./scripts/run-coverage.mjs"
+    "test:coverage": "node ./scripts/run-coverage.mjs",
+    "provision:deps": "node ./scripts/provision-deps.mjs",
+    "onboarding:smoke": "node ./scripts/onboarding-smoke.mjs"
   },
   "bin": {
     "anything-llm-loadtest": "scripts/load-test.mjs"
@@ -43,6 +45,7 @@
   "private": false,
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "dotenv": "^16.4.5",
     "jest": "^29.7.0"
   }
 }
