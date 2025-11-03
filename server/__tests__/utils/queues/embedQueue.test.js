@@ -33,6 +33,7 @@ jest.mock("bullmq", () => {
 jest.mock("../../../utils/queues/connection", () => ({
   ensureConnection: jest.fn().mockResolvedValue(true),
   getConnection: jest.fn().mockReturnValue({}),
+  isDisabled: jest.fn().mockReturnValue(false),
 }));
 
 function loadQueueModule() {

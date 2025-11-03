@@ -1,5 +1,10 @@
 const { validApiKey } = require("../utils/middleware/validApiKey");
 const { gatherPerformanceSnapshot } = require("../utils/telemetry/performance");
+const { getConcurrencySnapshot } = require("../utils/concurrency");
+const {
+  registry,
+  getPrometheusMetrics,
+} = require("../utils/metrics/registry");
 
 function metricsEndpoints(app) {
   if (!app) return;
@@ -11,6 +16,7 @@ function metricsEndpoints(app) {
         success: true,
         queues: performance.queues,
         latency: performance.latency,
+        concurrency: getConcurrencySnapshot(),
       });
     } catch (error) {
       console.error(error);
@@ -18,6 +24,19 @@ function metricsEndpoints(app) {
         success: false,
         error: error?.message || "Unable to load metrics",
       });
+    }
+  });
+
+  app.get("/metrics/prometheus", async (_, response) => {
+    try {
+      const metrics = await getPrometheusMetrics();
+      response.setHeader("Content-Type", registry.contentType);
+      response.status(200).send(metrics);
+    } catch (error) {
+      console.error(error);
+      response
+        .status(500)
+        .json({ success: false, error: "Unable to render metrics" });
     }
   });
 }

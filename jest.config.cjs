@@ -1,6 +1,7 @@
 module.exports = {
   testPathIgnorePatterns: ["/node_modules/", "<rootDir>/frontend/tests/e2e/"],
   moduleDirectories: ["node_modules", "frontend/node_modules"],
+  setupFilesAfterEnv: ["<rootDir>/server/jest.setup.js"],
   moduleNameMapper: {
     "^dotenv$": "<rootDir>/jest.stubs/dotenv.js",
     "^mime$": "<rootDir>/jest.stubs/mime.js",

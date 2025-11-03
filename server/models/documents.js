@@ -9,6 +9,7 @@ const { LatencyProfiler } = require("../utils/telemetry/latencyProfiler");
 const { enqueueEmbeddingJob, getQueueEvents } = require(
   "../utils/queues/embedQueue"
 );
+const { ingestionQueue } = require("../utils/concurrency");
 
 async function embedDocumentsInternal(workspace, additions = [], userId = null) {
   const pipelineSpan = LatencyProfiler.startSpan("embedding.pipeline", {
@@ -257,14 +258,43 @@ const Document = {
     }
 
     if (!job) {
-      return embedDocumentsInternal(workspace, additions, userId);
+      if (fireAndForget) {
+        ingestionQueue
+          .run(() => embedDocumentsInternal(workspace, additions, userId))
+          .catch((error) =>
+            console.error(
+              `\x1b[31m[Document]\x1b[0m Ingestion queue task failed: ${
+                error?.message
+              }`
+            )
+          );
+        return { jobId: null };
+      }
+
+      return ingestionQueue.run(() =>
+        embedDocumentsInternal(workspace, additions, userId)
+      );
     }
 
     if (fireAndForget) return { jobId: job.id };
 
     const events = await getQueueEvents();
     if (!events) {
-      return embedDocumentsInternal(workspace, additions, userId);
+      if (fireAndForget) {
+        ingestionQueue
+          .run(() => embedDocumentsInternal(workspace, additions, userId))
+          .catch((error) =>
+            console.error(
+              `\x1b[31m[Document]\x1b[0m Ingestion queue task failed: ${
+                error?.message
+              }`
+            )
+          );
+        return { jobId: job?.id || null };
+      }
+      return ingestionQueue.run(() =>
+        embedDocumentsInternal(workspace, additions, userId)
+      );
     }
 
     try {

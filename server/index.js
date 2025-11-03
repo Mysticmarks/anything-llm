@@ -34,6 +34,7 @@ const { mcpServersEndpoints } = require("./endpoints/mcpServers");
 const { mobileEndpoints } = require("./endpoints/mobile");
 const { metricsEndpoints } = require("./endpoints/metrics");
 const { httpLogger } = require("./middleware/httpLogger");
+const { baseLimiter } = require("./middleware/rateLimiters");
 const { runStartupDiagnostics } = require("./utils/startupDiagnostics");
 const {
   cluster,
@@ -41,6 +42,9 @@ const {
   restartDelay,
   SHOULD_SUPERVISE,
 } = require("../supervisor")("server");
+const app = express();
+const apiRouter = express.Router();
+apiRouter.use(baseLimiter);
 
 const FILE_LIMIT = "3GB";
 

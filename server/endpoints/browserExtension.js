@@ -12,6 +12,7 @@ const {
   ROLES,
 } = require("../utils/middleware/multiUserProtected");
 const { Telemetry } = require("../models/telemetry");
+const { ingestionLimiter } = require("../middleware/rateLimiters");
 
 function browserExtensionEndpoints(app) {
   if (!app) return;
@@ -80,7 +81,7 @@ function browserExtensionEndpoints(app) {
 
   app.post(
     "/browser-extension/embed-content",
-    [validBrowserExtensionApiKey],
+    [validBrowserExtensionApiKey, ingestionLimiter],
     async (request, response) => {
       try {
         const { workspaceId, textContent, metadata } = reqBody(request);

@@ -5,19 +5,23 @@ const { execSync } = require("child_process");
 const bcrypt = require("bcrypt");
 const express = require("express");
 
-jest.mock("bullmq", () => ({
-  Queue: class {
-    add() {
-      return Promise.resolve();
-    }
-  },
-  QueueEvents: class {
-    async waitUntilReady() {}
-    async close() {}
-    on() {}
-  },
-  Worker: class {},
-}));
+jest.mock(
+  "bullmq",
+  () => ({
+    Queue: class {
+      add() {
+        return Promise.resolve();
+      }
+    },
+    QueueEvents: class {
+      async waitUntilReady() {}
+      async close() {}
+      on() {}
+    },
+    Worker: class {},
+  }),
+  { virtual: true }
+);
 
 const repoRoot = path.resolve(__dirname, "../../..");
 const serverDir = path.join(repoRoot, "server");
@@ -184,11 +188,23 @@ describe("Authenticated workspace integration", () => {
   beforeAll(async () => {
     prepareFileSystem();
 
-    execSync("npx prisma migrate deploy --schema prisma/schema.prisma", {
-      cwd: serverDir,
-      stdio: "inherit",
-      env: { ...process.env },
-    });
+    try {
+      execSync("npx prisma migrate deploy --schema prisma/schema.prisma", {
+        cwd: serverDir,
+        stdio: "inherit",
+        env: { ...process.env, PRISMA_SKIP_GENERATE: "true" },
+      });
+    } catch (error) {
+      console.warn(
+        "Prisma migrate deploy failed for integration tests, falling back to prisma db push",
+        error?.message || error
+      );
+      execSync("npx prisma db push --schema prisma/schema.prisma", {
+        cwd: serverDir,
+        stdio: "inherit",
+        env: { ...process.env, PRISMA_SKIP_GENERATE: "true" },
+      });
+    }
 
     prisma = new PrismaClient({
       datasources: { db: { url: process.env.DATABASE_URL } },
