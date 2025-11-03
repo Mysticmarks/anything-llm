@@ -1,4 +1,4 @@
-replicaCount: 1
+replicaCount: 2
 
 initContainers: []
   # - name: init-myservice
@@ -20,7 +20,7 @@ persistentVolume:
   # Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
   #
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
 
   # AnythingLLM storage data Persistent Volume labels
   #
@@ -80,18 +80,53 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-# The Anything LLM application  deployment strategy
-# This is set to "Recreate" by default as AnythingLLM support is not yet
-# production ready.  Once it is, this can be changed to "RollingUpdate"
+# The Anything LLM application deployment strategy
 # Ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
-#
+# Rolling updates allow us to preserve availability when scaling horizontally.
 strategy:
-  # Type of deployment. Can be "Recreate" or "RollingUpdate". Default is "Recreate"
-  type: Recreate
+  # Type of deployment. Can be "Recreate" or "RollingUpdate". Default is "RollingUpdate"
+  type: RollingUpdate
   # If type is "RollingUpdate", the following values can be set:
   # rollingUpdate:
   #   maxUnavailable: 1
   #   maxSurge: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+livenessProbe:
+  httpGet:
+    path: /api/system/health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /api/system/health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 2Gi
 
 podAnnotations: {}
 podLabels: {}
@@ -141,6 +176,24 @@ envFrom: {}
 service:
   type: ClusterIP
   port: 3001
+  annotations: {}
+  extraPorts: []
+
+metrics:
+  enabled: false
+  path: /metrics
+  portName: http
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    additionalEndpoints: []
+  grafanaDashboard:
+    enabled: false
+    namespace: ""
+    labels: {}
 
 ingress:
   enabled: false

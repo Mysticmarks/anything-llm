@@ -1,0 +1,60 @@
+name: DAST OWASP ZAP Baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * *"
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline scan
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install workspace dependencies
+        run: |
+          yarn setup:envs
+          yarn --cwd server install --frozen-lockfile
+          yarn --cwd collector install --frozen-lockfile
+          yarn --cwd frontend install --frozen-lockfile
+          yarn prisma:generate
+
+      - name: Launch AnythingLLM stack
+        env:
+          DISABLE_FRONTEND_PROCESS: "true"
+          SKIP_FRONTEND_BUILD: "true"
+        run: |
+          set -eo pipefail
+          yarn prod:server &
+          echo $! > server.pid
+          # Give the API time to boot
+          sleep 45
+
+      - name: OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://127.0.0.1:3001/api/system/health"
+          rules_file_name: ".github/zap/rules.tsv"
+          cmd_options: "-a -m 5"
+
+      - name: Stop AnythingLLM stack
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
