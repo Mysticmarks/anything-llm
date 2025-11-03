@@ -83,7 +83,7 @@ envFrom:
 # Optionally override other values
 persistentVolume:
   size: 16Gi
-  mountPath: /storage
+  mountPath: /app/server/storage
 ```
 
 Install with:
@@ -98,6 +98,9 @@ helm install my-anythingllm ./anythingllm -f values-secret.yaml
 - Use `kubectl create secret generic` or your secrets management solution. If you need to reference multiple different provider keys (OpenAI, Anthropic, etc.), create a single `Secret` with multiple keys or multiple Secrets and add multiple `envFrom` entries.
 - Keep probe paths and `service.port` aligned. If your probes fail after deployment, check that the probe `port` matches the container port (or named port `http`) and that the `path` is valid.
 - For storage, if you have a pre-existing PVC set `persistentVolume.existingClaim` to the PVC name; the chart will mount that claim (and will not attempt to create a new PVC).
+- The default deployment is tuned for horizontal scaling: use a RWX-capable storage class (EFS, Filestore, etc.) or external object storage to allow multiple replicas.
+- Enable the `autoscaling` block to let Kubernetes right-size the deployment. Adjust CPU/memory utilization targets to align with your workload profile.
+- Turn on `metrics.enabled` together with `metrics.serviceMonitor.enabled` when you have Prometheus available. Grafana dashboards can be provisioned automatically via `metrics.grafanaDashboard.enabled`.
 - For production, provide resource `requests` and `limits` in `values.yaml` to prevent scheduler starvation and to control cost.
 
 {{ template "chart.valuesSection" . }}
