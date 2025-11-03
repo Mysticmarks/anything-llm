@@ -34,6 +34,7 @@ const { mcpServersEndpoints } = require("./endpoints/mcpServers");
 const { mobileEndpoints } = require("./endpoints/mobile");
 const { metricsEndpoints } = require("./endpoints/metrics");
 const { httpLogger } = require("./middleware/httpLogger");
+const { baseLimiter } = require("./middleware/rateLimiters");
 const {
   cluster,
   workerTarget,
@@ -42,6 +43,7 @@ const {
 } = require("../supervisor")("server");
 const app = express();
 const apiRouter = express.Router();
+apiRouter.use(baseLimiter);
 const FILE_LIMIT = "3GB";
 
 // Only log HTTP requests in development mode and if the ENABLE_HTTP_LOGGER environment variable is set to true

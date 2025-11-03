@@ -5,12 +5,19 @@ let connection = null;
 let ready = false;
 let initializing = null;
 
+function isDisabled() {
+  return (
+    process.env.REDIS_DISABLED === "true" ||
+    (process.env.NODE_ENV === "test" && process.env.ENABLE_TEST_REDIS !== "true")
+  );
+}
+
 function log(message, ...args) {
   console.log(`\x1b[36m[QueueConnection]\x1b[0m ${message}`, ...args);
 }
 
 function ensureClient() {
-  if (connection) return connection;
+  if (connection || isDisabled()) return connection;
   connection = new IORedis(redisUrl, {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
@@ -29,6 +36,7 @@ function ensureClient() {
 }
 
 async function ensureConnection() {
+  if (isDisabled()) return false;
   ensureClient();
   if (ready) return true;
   if (initializing) return initializing;
@@ -50,12 +58,13 @@ async function ensureConnection() {
 }
 
 function getConnection() {
+  if (isDisabled()) return null;
   ensureClient();
   return connection;
 }
 
 function isConnectionReady() {
-  return ready;
+  return !isDisabled() && ready;
 }
 
 module.exports = {
@@ -63,4 +72,5 @@ module.exports = {
   getConnection,
   isConnectionReady,
   redisUrl,
+  isDisabled,
 };

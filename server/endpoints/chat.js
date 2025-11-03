@@ -13,6 +13,11 @@ const {
   validWorkspaceSlug,
 } = require("../utils/middleware/validWorkspace");
 const { writeResponseChunk } = require("../utils/helpers/chat/responses");
+const {
+  chatQueue,
+  chatCircuitBreaker,
+} = require("../utils/concurrency");
+const { chatLimiter } = require("../middleware/rateLimiters");
 const { WorkspaceThread } = require("../models/workspaceThread");
 const { User } = require("../models/user");
 const truncate = require("truncate");
@@ -23,7 +28,12 @@ function chatEndpoints(app) {
 
   app.post(
     "/workspace/:slug/stream-chat",
-    [validatedRequest, flexUserRoleValid([ROLES.all]), validWorkspaceSlug],
+    [
+      validatedRequest,
+      flexUserRoleValid([ROLES.all]),
+      chatLimiter,
+      validWorkspaceSlug,
+    ],
     async (request, response) => {
       try {
         const user = await userFromSession(request, response);
@@ -60,14 +70,18 @@ function chatEndpoints(app) {
           return;
         }
 
-        await streamChatWithWorkspace(
-          response,
-          workspace,
-          message,
-          workspace?.chatMode,
-          user,
-          null,
-          attachments
+        await chatCircuitBreaker.exec(() =>
+          chatQueue.run(() =>
+            streamChatWithWorkspace(
+              response,
+              workspace,
+              message,
+              workspace?.chatMode,
+              user,
+              null,
+              attachments
+            )
+          )
         );
         await Telemetry.sendTelemetry("sent_chat", {
           multiUserMode: multiUserMode(response),
@@ -89,6 +103,20 @@ function chatEndpoints(app) {
         );
         response.end();
       } catch (e) {
+        if (e?.code === "CIRCUIT_OPEN") {
+          writeResponseChunk(response, {
+            id: uuidv4(),
+            type: "abort",
+            textResponse: null,
+            sources: [],
+            close: true,
+            error:
+              "Chat circuit breaker is open due to sustained failures. Please try again shortly.",
+          });
+          response.end();
+          return;
+        }
+
         console.error(e);
         writeResponseChunk(response, {
           id: uuidv4(),
@@ -108,6 +136,7 @@ function chatEndpoints(app) {
     [
       validatedRequest,
       flexUserRoleValid([ROLES.all]),
+      chatLimiter,
       validWorkspaceAndThreadSlug,
     ],
     async (request, response) => {
@@ -147,14 +176,18 @@ function chatEndpoints(app) {
           return;
         }
 
-        await streamChatWithWorkspace(
-          response,
-          workspace,
-          message,
-          workspace?.chatMode,
-          user,
-          thread,
-          attachments
+        await chatCircuitBreaker.exec(() =>
+          chatQueue.run(() =>
+            streamChatWithWorkspace(
+              response,
+              workspace,
+              message,
+              workspace?.chatMode,
+              user,
+              thread,
+              attachments
+            )
+          )
         );
 
         // If thread was renamed emit event to frontend via special `action` response.
@@ -195,6 +228,20 @@ function chatEndpoints(app) {
         );
         response.end();
       } catch (e) {
+        if (e?.code === "CIRCUIT_OPEN") {
+          writeResponseChunk(response, {
+            id: uuidv4(),
+            type: "abort",
+            textResponse: null,
+            sources: [],
+            close: true,
+            error:
+              "Chat circuit breaker is open due to sustained failures. Please try again shortly.",
+          });
+          response.end();
+          return;
+        }
+
         console.error(e);
         writeResponseChunk(response, {
           id: uuidv4(),

@@ -1,7 +1,14 @@
-const { Queue, QueueEvents, QueueScheduler } = require("bullmq");
-const { ensureConnection, getConnection } = require("./connection");
+const bullmq = require("bullmq");
+const { ensureConnection, getConnection, isDisabled } = require("./connection");
 
 const EMBEDDING_QUEUE = "embedding-jobs";
+const Queue = bullmq.Queue;
+const QueueEvents = bullmq.QueueEvents;
+const RawQueueScheduler =
+  typeof bullmq.QueueScheduler === "function"
+    ? bullmq.QueueScheduler
+    : bullmq.QueueScheduler?.QueueScheduler || bullmq.default?.QueueScheduler;
+
 let queue = null;
 let events = null;
 let scheduler = null;
@@ -18,17 +25,33 @@ const defaultJobOptions = {
 };
 
 async function initQueue() {
+  if (isDisabled()) return false;
   if (queue && events && scheduler) return true;
   if (initializing) return initializing;
 
   initializing = ensureConnection()
     .then(async (ready) => {
       if (!ready) return false;
+      if (typeof Queue !== "function") {
+        console.warn(
+          "\x1b[33m[EmbeddingQueue]\x1b[0m Queue implementation missing"
+        );
+        return false;
+      }
+
       queue = new Queue(EMBEDDING_QUEUE, {
         connection: getConnection(),
         defaultJobOptions,
       });
-      scheduler = new QueueScheduler(EMBEDDING_QUEUE, {
+      if (typeof RawQueueScheduler !== "function") {
+        console.warn(
+          "\x1b[33m[EmbeddingQueue]\x1b[0m QueueScheduler implementation missing"
+        );
+        queue = null;
+        return false;
+      }
+
+      scheduler = new RawQueueScheduler(EMBEDDING_QUEUE, {
         connection: getConnection(),
       });
       scheduler.on("error", (error) => {
@@ -50,6 +73,15 @@ async function initQueue() {
         scheduler = null;
         return false;
       }
+      if (typeof QueueEvents !== "function") {
+        console.warn(
+          "\x1b[33m[EmbeddingQueue]\x1b[0m QueueEvents implementation missing"
+        );
+        queue = null;
+        scheduler = null;
+        return false;
+      }
+
       events = new QueueEvents(EMBEDDING_QUEUE, {
         connection: getConnection(),
       });

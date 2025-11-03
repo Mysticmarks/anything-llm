@@ -12,6 +12,11 @@ const {
   EphemeralAgentHandler,
   EphemeralEventListener,
 } = require("../utils/agents/ephemeral");
+const {
+  agentFlowQueue,
+  agentCircuitBreaker,
+} = require("../utils/concurrency");
+const { agentLimiter } = require("../middleware/rateLimiters");
 
 function formatMessageSegment(segment) {
   if (segment === null || segment === undefined) return "";
@@ -93,7 +98,7 @@ function agentFlowEndpoints(app) {
   // Save a flow configuration
   app.post(
     "/agent-flows/save",
-    [validatedRequest, flexUserRoleValid([ROLES.admin])],
+    [validatedRequest, flexUserRoleValid([ROLES.admin]), agentLimiter],
     async (request, response) => {
       try {
         const { name, config, uuid } = request.body;
@@ -240,13 +245,20 @@ function agentFlowEndpoints(app) {
 
         let executionResult;
         try {
-          executionResult = await AgentFlows.executeFlow(
-            uuid,
-            variables,
-            context.aibitat
+          executionResult = await agentCircuitBreaker.exec(() =>
+            agentFlowQueue.run(() =>
+              AgentFlows.executeFlow(uuid, variables, context.aibitat)
+            )
           );
         } catch (error) {
           context.teardown();
+          if (error?.code === "CIRCUIT_OPEN") {
+            return response.status(503).json({
+              success: false,
+              error:
+                "Agent flow circuit breaker is open due to sustained failures. Try again soon.",
+            });
+          }
           console.error("Error running flow:", error);
           await Telemetry.sendTelemetry("agent_flow_execution_failed", {
             flow: uuid,

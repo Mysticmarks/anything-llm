@@ -32,6 +32,7 @@ const {
 } = require("../utils/files/pfp");
 const { getTTSProvider } = require("../utils/TextToSpeech");
 const { WorkspaceThread } = require("../models/workspaceThread");
+const { ingestionLimiter } = require("../middleware/rateLimiters");
 
 const truncate = require("truncate");
 const { purgeDocument } = require("../utils/files/purgeDocument");
@@ -45,7 +46,11 @@ function workspaceEndpoints(app) {
 
   app.post(
     "/workspace/new",
-    [validatedRequest, flexUserRoleValid([ROLES.admin, ROLES.manager])],
+    [
+      validatedRequest,
+      flexUserRoleValid([ROLES.admin, ROLES.manager]),
+      ingestionLimiter,
+    ],
     async (request, response) => {
       try {
         const user = await userFromSession(request, response);
@@ -877,6 +882,7 @@ function workspaceEndpoints(app) {
     [
       validatedRequest,
       flexUserRoleValid([ROLES.admin, ROLES.manager]),
+      ingestionLimiter,
       handleFileUpload,
     ],
     async function (request, response) {
