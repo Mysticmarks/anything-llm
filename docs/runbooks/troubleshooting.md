@@ -56,3 +56,9 @@ Always annotate the incident timeline in your monitoring system and link back to
 - Notify the on-call engineer and product owner when mitigation steps exceed 30 minutes.
 - File a retrospective issue capturing the impact, root cause, and prevention tasks.
 - Update this runbook whenever new classes of incidents are discovered.
+
+## Automation helpers
+
+- `node scripts/load-test.mjs --profile ingestion` reproduces collector bottlenecks with controlled concurrency. Capture the emitted metrics and compare them with the thresholds in `docs/runbooks/observability.md` before and after applying fixes.
+- `node scripts/run-tests.mjs --target frontend` executes the targeted Jest suites used by the CDN smoke test section above without running the full workspace.
+- `node scripts/validate-srd-changelog.mjs` ensures architectural documentation stays aligned while you apply hotfixes—run it before closing the incident issue to confirm that SRD and change logs reflect the lessons learned.

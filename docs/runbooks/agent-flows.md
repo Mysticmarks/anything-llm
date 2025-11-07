@@ -100,3 +100,9 @@ The server test suite includes `server/__tests__/endpoints/agentFlows.test.js`
 which mocks the executor and validates the scenarios described above. Extend the
 test when introducing new flow block types or response fields to prevent
 regressions.
+
+## Automation shortcuts
+
+- Run `node scripts/load-test.mjs --profile agent-flows` to exercise the `/agent-flows/:uuid/run` endpoint with concurrent payloads that mirror production telemetry. The script measures latency, success rate, and circuit breaker activity exposed in `/metrics`.
+- Add agent-flow smoke tests to CI by invoking `node scripts/onboarding-smoke.mjs --workspace <slug>` after provisioning fixtures. The script provisions a workspace, seeds a demo flow, and verifies that execution succeeds before handing control back to the pipeline.
+- Integrate `node scripts/run-tests.mjs --target server` in automation to ensure regression suites that cover agent flow execution continue to pass after modifying executor logic.

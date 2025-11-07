@@ -1,7 +1,7 @@
 ---
-version: 1.0.0
+version: 1.1.0
 status: Active
-last_updated: 2024-05-09
+last_updated: 2024-06-01
 owners:
   - Mintplex Labs Core Maintainers
 ---
@@ -28,6 +28,24 @@ User actions are funneled through the frontend, which authenticates against the 
 
 The [agent orchestration sequence](./diagrams/agent-orchestration-sequence.md) details this choreography.
 
+### Data Flow Summary
+1. **Session establishment** — Frontend or browser extension clients exchange credentials (session cookie, API key, or invite code) with `/request-token` or `/v1/auth`. Successful logins hydrate the session store with user, workspace, and feature flag context.
+2. **Request routing** — Authenticated calls land on Express routers grouped by domain (`workspaces`, `agentFlows`, `embed`, `mobile`, etc.). Middlewares enforce rate limits, role-based access, and request validation before controllers execute.
+3. **Domain execution** — Controllers coordinate Prisma models, vector adapters, MCP bridges, and concurrency primitives (`chatQueue`, `ingestionQueue`, `agentFlowQueue`) to execute the workload. Long-running ingestion jobs spill to BullMQ workers via `server/jobs`.
+4. **Persistence** — Workspace, document, and telemetry updates persist through Prisma transactions while embedding payloads are stored in the configured vector database namespace.
+5. **Delivery** — Responses surface through REST JSON, server-sent events, or WebSocket streams. Observability hooks emit metrics (`/metrics`, `/metrics/prometheus`) and event logs for the runbooks linked later in this SRD.
+
+### Concurrency & Scaling
+- **Process supervision** — `server/index.js` launches an Express worker per CPU (configurable through `supervisor.js`) and restarts unhealthy workers with a bounded back-off. Signal handlers drain workers to keep Prisma and Redis connections consistent.
+- **Async queues** — The server owns three in-memory `AsyncQueue` primitives backed by Prometheus instrumentation:
+  - `chatQueue` throttles concurrent streamed chat completions (`CHAT_QUEUE_CONCURRENCY`, default 4).
+  - `ingestionQueue` coordinates synchronous embedding when Redis/BullMQ are offline (`INGESTION_QUEUE_CONCURRENCY`, default 3).
+  - `agentFlowQueue` serializes flow executions to guarantee ordering and bounded tool usage (`AGENT_FLOW_QUEUE_CONCURRENCY`, default 2).
+- **Background workers** — When Redis is available, `server/jobs` spins up BullMQ worker_threads (`embeddingWorker.js`) to process the `embedding-jobs` queue with concurrency 2. Workers emit readiness events so process supervisors can gate startup.
+- **Circuit breakers & rate limiters** — `server/utils/concurrency` exposes per-queue breakers that open after repeated failures and surface in readiness probes. `server/middleware/rateLimiters` applies request-per-minute limits across ingestion, chat, and invite endpoints to protect shared resources.
+
+Refer to [`docs/server-concurrency.md`](./server-concurrency.md) for the deeper design rationale and benchmarking methodology.
+
 ## Data Models
 ### Relational Schema
 Key relational entities live in `server/prisma/schema.prisma` and its generated client:
@@ -39,10 +57,28 @@ Key relational entities live in `server/prisma/schema.prisma` and its generated 
 - **Thread & Message** — Conversation transcripts with model parameters and streaming metadata.
 
 ### Vector Storage
-The server abstracts LanceDB (default) with optional providers via `server/services/vector/*`. Embeddings attach to `DocumentChunk` records and feed retrieval augmented generation (RAG) flows.
+The server abstracts LanceDB (default) with optional providers via `server/services/vector/*`. Embeddings attach to `DocumentChunk` records and feed retrieval augmented generation (RAG) flows. Namespace names map 1:1 with workspace slugs so resets and exports can target precise tenants. When Pinecone, Qdrant, PGVector, or Weaviate are configured, provider-specific adapters maintain API parity while emitting shared metrics counters.
 
 ### Configuration Artifacts
 Per-workspace JSON/YAML settings stored under `server/storage` and user-provided `.env` files govern provider credentials, rate limits, tool activation, and MCP endpoints.
+
+### Audit, Telemetry, and Event Logs
+- **EventLogs** (`server/models/eventLogs.js`) capture administrative actions (user invites, workspace deletion) and back office flows (failed logins) for incident reviews.
+- **Telemetry** (`server/models/telemetry.js`) batches anonymised analytics when enabled. Each major endpoint (workspace CRUD, agent flow execution, embeds) emits events used by runbooks and the release dashboard.
+- **Metrics registry** (`server/utils/metrics/registry.js`) publishes queue depth, breaker state, request latencies, and resource gauges. The Prometheus exporter integrates with the Kubernetes Helm chart documented under `docs/runbooks/observability.md`.
+
+## Provider Integrations
+AnythingLLM allows per-workspace selection of the following providers. Contracts and configuration live in `.env` and UI modals referenced below.
+
+| Capability | Providers | Configuration Surface |
+| --- | --- | --- |
+| Large Language Models | OpenAI, Anthropic, Google Vertex AI, Azure OpenAI, custom API adapters | `server/utils/providers` with workspace overrides stored in `server/storage/workspaces/*.json`. |
+| Embedding Engines | OpenAI, Cohere, HuggingFace Inference, local transformers, vector DB-native embeddings | `.env` keys (`EMBEDDING_ENGINE`, `EMBEDDING_MODEL`) and workspace overrides via `/workspace/:slug/update`. |
+| Vector Databases | LanceDB (default), Qdrant, Pinecone, PGVector, Weaviate | `.env` keys (`VECTOR_DB`, provider-specific tokens) and runtime adapters in `server/services/vector`. |
+| Text-to-Speech | Native browser voices, ElevenLabs, Azure Speech | Configured through `/system/set-welcome-messages` UI and stored in `SystemSettings`. |
+| MCP / Tooling | Model Context Protocol servers, community plugins, browser extension actions | Registered via `/mcp-servers/*`, `/admin/v1/agent-plugins/*`, and community hub endpoints; manifests stored in Prisma tables. |
+
+Provider fallbacks ensure that when a workspace inherits `inherit` values from the global configuration the server consults `SystemSettings` before defaulting to `.env`.
 
 ## Agent Orchestration
 ### Runtime Components
@@ -75,6 +111,11 @@ Refer to the [sequence diagram](./diagrams/agent-orchestration-sequence.md) for 
 4. **Indexing** — Vector service stores embeddings and updates metadata indexes.
 5. **Verification** — Post-ingestion hooks validate chunk counts and register document provenance for citations.
 
+### Automation & Recovery
+- `scripts/start-stack.mjs` boots local server, collector, and frontend to reproduce ingestion issues end-to-end.
+- `scripts/provision-deps.mjs` ensures Redis, Postgres, and headless browser dependencies exist before running the collector.
+- BullMQ jobs can be inspected via `server/jobs/queueInspect.js` (executed with `node`) to requeue failed embeddings. Runbooks under `docs/runbooks/troubleshooting.md` outline manual recovery for backlog drains.
+
 ## UI Flows
 ### Workspace Setup
 1. User authenticates (or invites) via the frontend login.
@@ -90,6 +131,20 @@ Refer to the [sequence diagram](./diagrams/agent-orchestration-sequence.md) for 
 ### Administration
 - Organization owners manage users, themes, and system settings in `frontend/src/pages/Admin`.
 - Monitoring views expose ingestion status, job queues, and deployment health indicators.
+
+### Agent Flow Builder
+1. Builder lives in `frontend/src/pages/AgentFlows` and persists to `/agent-flows/save`.
+2. Users drag blocks that map directly to executor steps (LLM, tools, control flow). Validation occurs client side before save.
+3. Test runs call `/agent-flows/:uuid/run` and stream status cards summarised in `docs/runbooks/agent-flows.md`.
+
+### Embed & Browser Extension Journeys
+- **Embed widgets** — The embed dashboard issues API keys, configures tone/model, and surfaces `/embed/:embedId/stream-chat` transcripts for review.
+- **Browser extension** — Users register with `/browser-extension/api-keys/new`, install the Chrome extension, and push snippets via `/browser-extension/embed-content`. The extension surfaces workspace suggestions and respects rate limits configured in `SystemSettings`.
+
+### Mobile Companion
+1. Admin generates a device token from `/mobile/register` (exposed in the admin UI).
+2. The mobile client authenticates against `/mobile/auth` and syncs workspace lists from `/mobile/devices`.
+3. Commands (`/mobile/send/:command`) trigger push notifications or clipboard transfers, which are documented in [`docs/runbooks/mobile-companion.md`](./runbooks/mobile-companion.md).
 
 ## Deployment Options
 AnythingLLM supports multiple deployment targets, visualized in the [deployment diagram](./diagrams/deployment-options.md).
