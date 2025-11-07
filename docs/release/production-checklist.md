@@ -38,3 +38,10 @@ budgets to ensure a predictable rollout.
 - [ ] Monitor logs and dashboards for 30 minutes. Validate no new alerts fire.
 - [ ] Update the incident response rotation with release details and rollback plan.
 - [ ] Close the release tracking issue with links to artifacts and telemetry.
+
+## Automation aids
+
+- Execute `node scripts/start-stack.mjs --verify` before tagging to spin up the entire stack with production flags and ensure startup diagnostics pass.
+- Use `node scripts/run-tests.mjs --target all` to wrap the service-specific test invocations listed above in a single command.
+- Run `node scripts/load-test.mjs --profile release` against staging after the build artifacts are uploaded. Capture the generated report in the release tracking issue.
+- Validate documentation parity by adding `node scripts/check-docs-freshness.mjs` to the pre-release pipeline; the script fails when SRD or runbooks drift from the code being shipped.

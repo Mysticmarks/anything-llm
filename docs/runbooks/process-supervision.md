@@ -62,3 +62,9 @@ Regardless of the supervisor, add health endpoints to your monitoring stack:
 Combine these checks with log forwarding (e.g., PM2 log streams, journald, or Fluent Bit) to surface ingestion and agent flow errors early.
 
 By adopting a supervisor, bare-metal operators can match the resilience provided by Docker deployments without managing multiple shells manually.
+
+## Automation playbooks
+
+- `node scripts/start-stack.mjs --pm2` provisions the same process topology defined above and exposes logs on stdout for quick verification. Use it during incident response before rolling the change to production.
+- `node scripts/provision-deps.mjs` validates Redis, Postgres, and Chrome dependencies prior to starting the supervisor. Running it from cron reduces startup flakiness for unattended restarts.
+- Pair this runbook with `node scripts/check-docs-freshness.mjs` to keep PM2 configuration and documentation synchronized.

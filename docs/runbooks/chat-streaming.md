@@ -35,5 +35,11 @@ websocket session that supports bidirectional control messages.
   mocked websocket interruptions trigger reconnection and the UI surfaces the
   recovery message plus the closing status line.
 
+## Automation hooks
+
+- `node scripts/load-test.mjs --profile chat-streaming` simulates concurrent SSE and websocket chat sessions against a staging deployment. The script posts metrics to stdout and Prometheus, allowing the on-call to compare queue utilization before and after releases.
+- `node scripts/start-stack.mjs --headless` spins up the frontend and server locally with logging enabled so developers can reproduce websocket regressions without manual window management.
+- Add `node scripts/check-docs-freshness.mjs` to CI to ensure this runbook and related streaming docs stay synchronized whenever chat transport logic changes.
+
 Update this document when the retry strategy, toast messaging, or transcript
 signatures change.

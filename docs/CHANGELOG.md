@@ -1,5 +1,8 @@
 ---
 srd_versions:
+  - version: 1.1.0
+    date: 2024-06-01
+    summary: Added concurrency, provider integration, and automation updates to the SRD alongside new API inventory docs.
   - version: 1.0.0
     date: 2024-05-09
     summary: Initial SRD baseline covering architecture, data models, agents, ingestion, UI, and deployments.
@@ -24,6 +27,16 @@ The change log records the relationship between code-level changes and SRD updat
    ```
 
 4. Run `yarn docs:check` locally to validate the SRD schema, markdown formatting, and change-log linkage.
+
+## [1.1.0] - 2024-06-01
+### SRD
+- Added a platform-wide data flow summary and concurrency overview referencing `server/index.js`, `server/utils/concurrency`, and [`docs/server-concurrency.md`](./server-concurrency.md).
+- Documented provider integration matrix, telemetry artifacts, and new UI journeys (embed, browser extension, mobile companion) in [`docs/srd.md`](./srd.md).
+- Linked ingestion automation scripts and mobile operations to keep the SRD aligned with runbooks.
+
+### Code Alignment
+- Added comprehensive Express endpoint inventory at [`docs/api/server-endpoints.md`](./api/server-endpoints.md).
+- Updated runbooks, release checklist, and ADRs to reference automation scripts in `scripts/*.mjs`.
 
 ## [1.0.0] - 2024-05-09
 ### SRD

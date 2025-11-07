@@ -73,4 +73,10 @@ kubectl top pods -n <namespace>
 kubectl describe servicemonitor -n <monitoring-namespace> anythingllm
 ```
 
+## Automation touchpoints
+
+- Integrate `node scripts/load-test.mjs --profile chat-streaming` into staging release pipelines. The script emits `queue_jobs_active` and circuit-breaker metrics that map directly to the Grafana dashboard described above.
+- Run `node scripts/run-tests.mjs --target server` after scaling events to verify the Prometheus and health endpoints (`/metrics`, `/health/ready`) still return success.
+- Schedule `node scripts/check-docs-freshness.mjs` weekly to flag when observability configuration or runbooks fall behind code changes.
+
 Keep this runbook close to the alerts by linking it in Alertmanager annotations or your paging tool of choice.
