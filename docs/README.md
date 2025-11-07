@@ -7,6 +7,7 @@ subdirectory focuses on a specific concern so that contributors and operators ca
 - [`api/`](./api) — Endpoint documentation and request/response contracts.
 - [`runbooks/`](./runbooks) — Troubleshooting guides and operational runbooks for production incidents.
 - [`release/`](./release) — Release readiness checklists and production rollout procedures.
+- [`frontend/`](./frontend) — UI accessibility notes, keyboard shortcuts, and workflow playbooks for the React application.
 
 All documents in this folder are expected to stay in sync with the behavior of the production environment. Run `yarn docs:check`
 before submitting a pull request to ensure scripts referenced in the documentation remain valid.

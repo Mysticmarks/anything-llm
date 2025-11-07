@@ -1,5 +1,6 @@
 const chalk = require("chalk");
 const { Telemetry } = require("../../../../models/telemetry");
+const { recordAgentError } = require("../../../metrics/registry");
 
 /**
  * HTTP Interface plugin for Aibitat to emulate a websocket interface in the agent
@@ -34,6 +35,12 @@ const httpSocket = {
         aibitat.onError(async (error) => {
           let errorMessage =
             error?.message || "An error occurred while running the agent.";
+          recordAgentError({
+            agent: aibitat?.activeAgent?.name,
+            provider: aibitat?.provider,
+            workspaceId: aibitat?.handlerProps?.invocation?.workspace?.id,
+            error,
+          });
           console.error(chalk.red(`   error: ${errorMessage}`), error);
           aibitat.introspect(
             `Error encountered while running: ${errorMessage}`

@@ -4,46 +4,55 @@ import { userFromStorage } from "./request";
 import { TOGGLE_LLM_SELECTOR_EVENT } from "@/components/WorkspaceChat/ChatContainer/PromptInput/LLMSelector/action";
 
 export const KEYBOARD_SHORTCUTS_HELP_EVENT = "keyboard-shortcuts-help";
-export const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+const platform = typeof navigator !== "undefined" ? navigator.platform : "";
+export const isMac = platform.toUpperCase().includes("MAC");
+
 export const SHORTCUTS = {
   "⌘ + ,": {
     translationKey: "settings",
+    category: "navigation",
     action: () => {
       window.location.href = paths.settings.interface();
     },
   },
   "⌘ + H": {
     translationKey: "home",
+    category: "navigation",
     action: () => {
       window.location.href = paths.home();
     },
   },
   "⌘ + I": {
     translationKey: "workspaces",
+    category: "navigation",
     action: () => {
       window.location.href = paths.settings.workspaces();
     },
   },
   "⌘ + K": {
     translationKey: "apiKeys",
+    category: "navigation",
     action: () => {
       window.location.href = paths.settings.apiKeys();
     },
   },
   "⌘ + L": {
     translationKey: "llmPreferences",
+    category: "workspace",
     action: () => {
       window.location.href = paths.settings.llmPreference();
     },
   },
   "⌘ + Shift + C": {
     translationKey: "chatSettings",
+    category: "workspace",
     action: () => {
       window.location.href = paths.settings.chat();
     },
   },
   "⌘ + Shift + ?": {
     translationKey: "help",
+    category: "utilities",
     action: () => {
       window.dispatchEvent(
         new CustomEvent(KEYBOARD_SHORTCUTS_HELP_EVENT, {
@@ -54,6 +63,7 @@ export const SHORTCUTS = {
   },
   F1: {
     translationKey: "help",
+    category: "utilities",
     action: () => {
       window.dispatchEvent(
         new CustomEvent(KEYBOARD_SHORTCUTS_HELP_EVENT, {
@@ -64,11 +74,32 @@ export const SHORTCUTS = {
   },
   "⌘ + Shift + L": {
     translationKey: "showLLMSelector",
+    category: "workspace",
     action: () => {
       window.dispatchEvent(new Event(TOGGLE_LLM_SELECTOR_EVENT));
     },
   },
 };
+
+export const WORKFLOW_GUIDES = [
+  {
+    id: "start-chat",
+    translationKey: "startChat",
+    href: paths.home(),
+  },
+  {
+    id: "ingest-content",
+    translationKey: "ingestContent",
+    href: paths.settings.workspaces(),
+  },
+  {
+    id: "publish-agent",
+    translationKey: "publishAgent",
+    href: paths.communityHub.trending(),
+  },
+];
+
+const CATEGORY_ORDER = ["navigation", "workspace", "utilities"];
 
 const LISTENERS = {};
 const modifier = isMac ? "meta" : "ctrl";
@@ -80,26 +111,38 @@ for (const key in SHORTCUTS) {
   LISTENERS[listenerKey] = SHORTCUTS[key].action;
 }
 
-// Convert keyboard event to shortcut key
+export function getShortcutGuide() {
+  const groups = CATEGORY_ORDER.map((category) => ({
+    id: category,
+    shortcuts: [],
+  }));
+
+  Object.entries(SHORTCUTS).forEach(([combo, definition]) => {
+    const group = groups.find((item) => item.id === definition.category);
+    if (!group) return;
+    group.shortcuts.push({
+      combo,
+      translationKey: definition.translationKey,
+    });
+  });
+
+  return groups.filter((group) => group.shortcuts.length > 0);
+}
+
 function getShortcutKey(event) {
   let key = "";
   if (event.metaKey || event.ctrlKey) key += modifier + "+";
   if (event.shiftKey) key += "shift+";
   if (event.altKey) key += "alt+";
 
-  // Handle special keys
   if (event.key === ",") key += ",";
-  // Handle question mark or slash for help shortcut
   else if (event.key === "?" || event.key === "/") key += "?";
-  else if (event.key === "Control")
-    return ""; // Ignore Control key by itself
-  else if (event.key === "Shift")
-    return ""; // Ignore Shift key by itself
+  else if (event.key === "Control") return "";
+  else if (event.key === "Shift") return "";
   else key += event.key.toLowerCase();
   return key;
 }
 
-// Initialize keyboard shortcuts
 export function initKeyboardShortcuts() {
   function handleKeyDown(event) {
     const shortcutKey = getShortcutKey(event);
@@ -118,8 +161,6 @@ export function initKeyboardShortcuts() {
 
 function useKeyboardShortcuts() {
   useEffect(() => {
-    // If there is a user and the user is not an admin do not register the event listener
-    // since some of the shortcuts are only available in multi-user mode as admin
     const user = userFromStorage();
     if (!!user && user?.role !== "admin") return;
     const cleanup = initKeyboardShortcuts();

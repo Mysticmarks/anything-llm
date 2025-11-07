@@ -2,6 +2,12 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { REFETCH_LOGO_EVENT } from "@/LogoContext";
 import Appearance from "@/models/appearance";
 import { AUTH_USER } from "@/utils/constants";
+import {
+  auditContrastRatios,
+  contrastRatio,
+  describeContrastFailures,
+  formatContrastReport,
+} from "@/utils/accessibility";
 
 const DENSITY_SCALE = {
   compact: 0.92,
@@ -13,6 +19,42 @@ const ANIMATION_SCALE = {
   reduced: 0.7,
   balanced: 1,
   expressive: 1.25,
+};
+
+const MOTION_CURVES = {
+  reduced: {
+    standard: "linear",
+    emphasized: "linear",
+    entrance: "linear",
+  },
+  balanced: {
+    standard: "cubic-bezier(0.2, 0, 0, 1)",
+    emphasized: "cubic-bezier(0.16, 1, 0.3, 1)",
+    entrance: "cubic-bezier(0.05, 0.7, 0.1, 1)",
+  },
+  expressive: {
+    standard: "cubic-bezier(0.2, 0, 0, 1)",
+    emphasized: "cubic-bezier(0.2, 0, 0, 1)",
+    entrance: "cubic-bezier(0.16, 1, 0.3, 1)",
+  },
+};
+
+const MOTION_DURATIONS = {
+  reduced: {
+    short: 120,
+    medium: 160,
+    long: 220,
+  },
+  balanced: {
+    short: 160,
+    medium: 240,
+    long: 320,
+  },
+  expressive: {
+    short: 220,
+    medium: 320,
+    long: 420,
+  },
 };
 
 const PRESET_DEFINITIONS = {
@@ -542,6 +584,66 @@ function deriveCssVariables(paletteHex) {
   };
 }
 
+function buildProceduralPalette(paletteHex) {
+  const accentContrastColor =
+    contrastRatio(paletteHex.accent, "#000000") >= 4.5 ? "#000000" : "#ffffff";
+
+  const tokens = {
+    surfaceRaised: mix(paletteHex.surface, paletteHex.background, 0.35),
+    surfaceSunken: mix(paletteHex.surface, paletteHex.background, 0.15),
+    surfaceBorder: withAlpha(paletteHex.border, 0.55),
+    borderStrong: mix(paletteHex.border, paletteHex.text, 0.25),
+    accentStrong: adjustValue(paletteHex.accent, 6),
+    accentMuted: withAlpha(paletteHex.accent, 0.18),
+    accentContrast: accentContrastColor,
+    overlaySoft: withAlpha(paletteHex.background, 0.6),
+    overlayStrong: withAlpha(paletteHex.background, 0.8),
+    successStrong: adjustValue(paletteHex.success, 6),
+    warningStrong: adjustValue(paletteHex.warning, 6),
+    dangerStrong: adjustValue(paletteHex.danger, 6),
+  };
+
+  const cssVars = {
+    "--theme-surface-raised": tokens.surfaceRaised,
+    "--theme-surface-sunken": tokens.surfaceSunken,
+    "--theme-surface-border": tokens.surfaceBorder,
+    "--theme-border-strong": tokens.borderStrong,
+    "--theme-accent-strong": tokens.accentStrong,
+    "--theme-accent-muted": tokens.accentMuted,
+    "--theme-accent-contrast": tokens.accentContrast,
+    "--theme-overlay-soft": tokens.overlaySoft,
+    "--theme-overlay-strong": tokens.overlayStrong,
+    "--theme-status-success-strong": tokens.successStrong,
+    "--theme-status-warning-strong": tokens.warningStrong,
+    "--theme-status-danger-strong": tokens.dangerStrong,
+  };
+
+  return { tokens, cssVars };
+}
+
+function resolveAnimationTokens(animationKey, multiplier = 1) {
+  const curves = MOTION_CURVES[animationKey] ?? MOTION_CURVES.balanced;
+  const baseDurations =
+    MOTION_DURATIONS[animationKey] ?? MOTION_DURATIONS.balanced;
+  const scaledDurations = Object.fromEntries(
+    Object.entries(baseDurations).map(([key, value]) => [
+      key,
+      Math.max(0, Math.round(value * (multiplier ?? 0))),
+    ])
+  );
+
+  const cssVars = {
+    "--theme-motion-ease-standard": curves.standard,
+    "--theme-motion-ease-emphasized": curves.emphasized,
+    "--theme-motion-ease-entrance": curves.entrance,
+    "--theme-motion-duration-short": `${scaledDurations.short}ms`,
+    "--theme-motion-duration-medium": `${scaledDurations.medium}ms`,
+    "--theme-motion-duration-long": `${scaledDurations.long}ms`,
+  };
+
+  return { curves, durations: scaledDurations, cssVars };
+}
+
 function persistThemeToAppearance(userKey, themeState) {
   try {
     const existing = Appearance.getSettings();
@@ -592,6 +694,26 @@ export function useTheme() {
     return ANIMATION_SCALE[themeState.animation] ?? 1;
   }, [prefersReducedMotion, themeState.animation]);
 
+  const procedural = useMemo(
+    () => buildProceduralPalette(paletteHex),
+    [paletteHex]
+  );
+
+  const animationTokens = useMemo(
+    () => resolveAnimationTokens(themeState.animation, animationMultiplier),
+    [themeState.animation, animationMultiplier]
+  );
+
+  const contrastReport = useMemo(
+    () => auditContrastRatios(paletteHex),
+    [paletteHex]
+  );
+
+  const contrastTable = useMemo(
+    () => formatContrastReport(contrastReport),
+    [contrastReport]
+  );
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -608,11 +730,28 @@ export function useTheme() {
   }, []);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    if (!contrastReport || contrastReport.passed) return;
+    console.groupCollapsed("[theme] contrast issues detected");
+    console.table(contrastTable);
+    console.info(describeContrastFailures(contrastReport));
+    console.groupEnd();
+  }, [contrastReport, contrastTable]);
+
+  useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     const cssVars = deriveCssVariables(paletteHex);
 
     Object.entries(cssVars).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+    });
+
+    Object.entries(procedural.cssVars).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+    });
+
+    Object.entries(animationTokens.cssVars).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
 
@@ -651,7 +790,15 @@ export function useTheme() {
     }
 
     persistThemeToAppearance(userKey, themeState);
-  }, [themeState, paletteHex, themeMode, userKey]);
+  }, [
+    themeState,
+    paletteHex,
+    themeMode,
+    userKey,
+    animationMultiplier,
+    animationTokens,
+    procedural,
+  ]);
 
   const previousMode = useRef(themeMode);
   useEffect(() => {
@@ -792,6 +939,14 @@ export function useTheme() {
     animation: themeState.animation,
     setAnimation,
     animationMultiplier,
+    proceduralPalette: procedural.tokens,
+    motion: {
+      easing: animationTokens.curves,
+      durations: animationTokens.durations,
+      multiplier: animationMultiplier,
+    },
+    contrastReport,
+    contrastSummary: contrastTable,
     isCustomTheme: themeState.isCustom,
     basePreset: themeState.basePreset,
   };

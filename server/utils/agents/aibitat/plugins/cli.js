@@ -2,6 +2,7 @@
 const { input } = require("@inquirer/prompts");
 const chalk = require("chalk");
 const { RetryError } = require("../error");
+const { recordAgentError } = require("../../../metrics/registry");
 
 /**
  * Command-line Interface plugin. It prints the messages on the console and asks for feedback
@@ -21,6 +22,11 @@ const cli = {
         aibitat.onError(async (error) => {
           let errorMessage =
             error?.message || "An error occurred while running the agent.";
+          recordAgentError({
+            agent: aibitat?.activeAgent?.name,
+            provider: aibitat?.provider,
+            error,
+          });
           console.error(chalk.red(`   error: ${errorMessage}`), error);
         });
 

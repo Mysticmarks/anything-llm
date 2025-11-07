@@ -153,6 +153,25 @@ export default {
             'delete-hover-text': 'var(--theme-button-delete-hover-text)',
             'delete-hover-bg': 'var(--theme-button-delete-hover-bg)',
           },
+          surface: {
+            raised: 'var(--theme-surface-raised)',
+            sunken: 'var(--theme-surface-sunken)',
+            border: 'var(--theme-surface-border)',
+          },
+          overlay: {
+            soft: 'var(--theme-overlay-soft)',
+            strong: 'var(--theme-overlay-strong)',
+          },
+          accent: {
+            strong: 'var(--theme-accent-strong)',
+            muted: 'var(--theme-accent-muted)',
+            contrast: 'var(--theme-accent-contrast)',
+          },
+          status: {
+            successStrong: 'var(--theme-status-success-strong)',
+            warningStrong: 'var(--theme-status-warning-strong)',
+            dangerStrong: 'var(--theme-status-danger-strong)',
+          },
         },
       },
       backgroundImage: {
