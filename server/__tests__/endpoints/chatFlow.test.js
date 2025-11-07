@@ -3,6 +3,14 @@ const express = require("express");
 jest.mock("supertest");
 const request = require("supertest");
 
+const mockChatQueueRun = jest.fn((task) => task());
+const mockChatCircuitExec = jest.fn((task) => task());
+
+jest.mock("../../utils/concurrency", () => ({
+  chatQueue: { run: (...args) => mockChatQueueRun(...args) },
+  chatCircuitBreaker: { exec: (...args) => mockChatCircuitExec(...args) },
+}));
+
 const mockUser = { id: 7, role: "admin", dailyMessageLimit: 10 };
 const mockWorkspace = { id: 3, slug: "demo", name: "Demo" };
 
@@ -89,6 +97,8 @@ describe("chat streaming endpoint", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockChatQueueRun.mockImplementation((task) => task());
+    mockChatCircuitExec.mockImplementation((task) => task());
     app = express();
     app.use(express.json());
     const router = express.Router();
@@ -124,5 +134,33 @@ describe("chat streaming endpoint", () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("Message is empty.");
     expect(mockStreamChat).not.toHaveBeenCalled();
+  });
+
+  test("emits abort chunk when stream handler throws", async () => {
+    mockStreamChat.mockImplementationOnce(() => {
+      throw new Error("stream failure");
+    });
+
+    const response = await request(app)
+      .post("/workspace/demo/stream-chat")
+      .send({ message: "Hello" });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("stream failure");
+  });
+
+  test("indicates circuit breaker errors to clients", async () => {
+    mockChatCircuitExec.mockImplementationOnce(() => {
+      const error = new Error("open");
+      error.code = "CIRCUIT_OPEN";
+      throw error;
+    });
+
+    const response = await request(app)
+      .post("/workspace/demo/stream-chat")
+      .send({ message: "Hello" });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("Chat circuit breaker is open");
   });
 });
