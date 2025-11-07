@@ -4,6 +4,7 @@ const { getConcurrencySnapshot } = require("../utils/concurrency");
 const {
   registry,
   getPrometheusMetrics,
+  getStructuredEvents,
 } = require("../utils/metrics/registry");
 
 function metricsEndpoints(app) {
@@ -17,6 +18,7 @@ function metricsEndpoints(app) {
         queues: performance.queues,
         latency: performance.latency,
         concurrency: getConcurrencySnapshot(),
+        events: getStructuredEvents(),
       });
     } catch (error) {
       console.error(error);

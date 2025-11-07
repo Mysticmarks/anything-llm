@@ -1,35 +1,54 @@
 import { createPortal } from "react-dom";
-/**
- * @typedef {Object} ModalWrapperProps
- * @property {import("react").ReactComponentElement} children - The DOM/JSX to render
- * @property {boolean} isOpen - Option that renders the modal
- * @property {boolean} noPortal - (default: false) Used for creating sub-DOM modals that need to be rendered as a child element instead of a modal placed at the root
- * Note: This can impact the bg-overlay presentation due to conflicting DOM positions so if using this property you should
-   double check it renders as desired.
- */
+import useAccessibleModal from "@/hooks/useAccessibleModal";
 
-/**
- *
- * @param {ModalWrapperProps} props - ModalWrapperProps to pass
- * @returns {import("react").ReactNode}
- *
- * @todo Add a closeModal prop to the ModalWrapper component so we can escape dismiss anywhere this is used
- */
-export default function ModalWrapper({ children, isOpen, noPortal = false }) {
+export default function ModalWrapper({
+  children,
+  isOpen,
+  noPortal = false,
+  label,
+  labelledBy,
+  describedBy,
+  onClose,
+  initialFocus,
+  restoreFocusOnClose,
+}) {
+  const { containerRef, getDialogProps, handleKeyDown } = useAccessibleModal(
+    Boolean(isOpen),
+    {
+      label,
+      labelledBy,
+      describedBy,
+      onClose,
+      initialFocus,
+      restoreFocusOnClose,
+    }
+  );
+
   if (!isOpen) return null;
 
-  if (noPortal) {
-    return (
-      <div className="bg-black/60 backdrop-blur-sm fixed top-0 left-0 outline-none w-screen h-screen flex items-center justify-center z-99">
+  const overlay = (
+    <div
+      className="bg-black/60 backdrop-blur-sm fixed top-0 left-0 outline-none w-screen h-screen flex items-center justify-center z-99"
+      role="presentation"
+    >
+      <div
+        {...getDialogProps({
+          className:
+            "relative outline-none focus-visible:ring-2 focus-visible:ring-theme-button-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+          onKeyDown: handleKeyDown,
+        })}
+        ref={containerRef}
+      >
         {children}
       </div>
-    );
+    </div>
+  );
+
+  if (noPortal) {
+    return overlay;
   }
 
-  return createPortal(
-    <div className="bg-black/60 backdrop-blur-sm fixed top-0 left-0 outline-none w-screen h-screen flex items-center justify-center z-99">
-      {children}
-    </div>,
-    document.getElementById("root")
-  );
+  const root = document.getElementById("root");
+  if (!root) return overlay;
+  return createPortal(overlay, root);
 }

@@ -13,7 +13,10 @@ This runbook explains how to connect AnythingLLM's Kubernetes deployment to your
    - Metrics to watch:
      - `http_server_requests_total` / `http_requests_total` for API throughput and error rates.
      - `container_cpu_usage_seconds_total` and `container_memory_working_set_bytes` for pod resource consumption.
-     - `queue_jobs_ready` for collector backlogs.
+     - `anything_queue_pending` and `anything_queue_active` for live worker utilisation.
+     - `anything_queue_saturation_total` to track how often queues exceed 85% utilisation.
+     - `anything_agent_errors_total` for upstream provider failures surfaced by the agent runtime.
+     - `queue_jobs_ready` for collector backlogs (legacy metric exposed by the collector service).
    - Ensure the metrics-server Helm release (bundled with the Terraform stack) is running; the HorizontalPodAutoscaler depends on the `metrics.k8s.io` API.
 
 ## Grafana dashboard
@@ -35,7 +38,12 @@ The Helm chart can ship a Grafana dashboard as a ConfigMap labeled `grafana_dash
    - CPU utilisation (5-minute rate)
    - Memory working set
    - HTTP request throughput/error rate
-   - Work queue depth
+   - Work queue depth and saturation frequency
+   - Agent error breakdown by provider
+
+### Structured event stream
+
+`/api/metrics` now includes an `events` payload with aggregated counts for queue saturation, circuit breaker trips, and agent errors. The server emits the same payload on an in-process event emitter (`metricsEmitter`) so custom sinks (e.g., Grafana Loki or a webhook bridge) can subscribe without polling. Each event object carries the triggering queue/circuit, the current total, and a timestamp suitable for alert annotations.
 
 ## Alerting recommendations
 

@@ -1005,6 +1005,14 @@ const TRANSLATIONS = {
 
   "keyboard-shortcuts": {
     title: "Keyboard Shortcuts",
+    intro:
+      "All shortcuts are fully keyboard accessible. Pair them with the workflow guide below to stay in flow.",
+    close: "Close keyboard shortcuts",
+    sections: {
+      navigation: "Navigation",
+      workspace: "Workspace",
+      utilities: "Utilities",
+    },
     shortcuts: {
       settings: "Open Settings",
       workspaceSettings: "Open Current Workspace Settings",
@@ -1015,6 +1023,25 @@ const TRANSLATIONS = {
       chatSettings: "Chat Settings",
       help: "Show keyboard shortcuts help",
       showLLMSelector: "Show workspace LLM Selector",
+    },
+    guides: {
+      title: "Workflow quick start",
+      description:
+        "Use these quick links to open the most common workflows and orient new teammates.",
+      items: {
+        startChat: {
+          title: "Start a new chat",
+          description: "Open the home workspace and launch a conversation.",
+        },
+        ingestContent: {
+          title: "Ingest new content",
+          description: "Jump to workspace management to add or resync sources.",
+        },
+        publishAgent: {
+          title: "Publish an agent",
+          description: "Head to the Community Hub to share or import agent flows.",
+        },
+      },
     },
   },
   community_hub: {

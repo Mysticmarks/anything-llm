@@ -71,11 +71,18 @@ export default function AccountModal({ user, hideModal }) {
     }
   };
   return (
-    <ModalWrapper isOpen={true}>
+    <ModalWrapper
+      isOpen={true}
+      onClose={hideModal}
+      labelledBy="profile-settings-heading"
+    >
       <div className="w-full max-w-2xl bg-theme-bg-secondary rounded-lg shadow border-2 border-theme-modal-border overflow-hidden">
         <div className="relative p-6 border-b rounded-t border-theme-modal-border">
           <div className="w-full flex gap-x-2 items-center">
-            <h3 className="text-xl font-semibold text-white overflow-hidden overflow-ellipsis whitespace-nowrap">
+            <h3
+              id="profile-settings-heading"
+              className="text-xl font-semibold text-white overflow-hidden overflow-ellipsis whitespace-nowrap"
+            >
               {t("profile_settings.edit_account")}
             </h3>
           </div>
