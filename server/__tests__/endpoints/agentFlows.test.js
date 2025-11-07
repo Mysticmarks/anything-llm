@@ -44,6 +44,14 @@ const mockAibitat = {
   terminate: jest.fn(),
 };
 
+const mockQueueRun = jest.fn((task) => task());
+const mockCircuitExec = jest.fn((task) => task());
+
+jest.mock("../../utils/concurrency", () => ({
+  agentFlowQueue: { run: (...args) => mockQueueRun(...args) },
+  agentCircuitBreaker: { exec: (...args) => mockCircuitExec(...args) },
+}));
+
 const handlerInit = jest.fn().mockResolvedValue();
 const handlerCreateAIbitat = jest
   .fn()
@@ -94,6 +102,8 @@ describe("agent flow run endpoint", () => {
       results: [],
       variables: {},
     });
+    mockQueueRun.mockImplementation((task) => task());
+    mockCircuitExec.mockImplementation((task) => task());
 
     app = express();
     app.use(express.json());
@@ -228,6 +238,22 @@ describe("agent flow run endpoint", () => {
       expect.objectContaining({ flow: "demo", error: "boom" })
     );
     expect(mockAibitat.terminate).toHaveBeenCalled();
+  });
+
+  test("returns 503 when circuit breaker is open", async () => {
+    mockCircuitExec.mockImplementationOnce(() => {
+      const error = new Error("open");
+      error.code = "CIRCUIT_OPEN";
+      throw error;
+    });
+
+    const response = await request(app)
+      .post("/agent-flows/demo/run")
+      .send({ variables: {} });
+
+    expect(response.status).toBe(503);
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain("circuit breaker");
   });
 
 });

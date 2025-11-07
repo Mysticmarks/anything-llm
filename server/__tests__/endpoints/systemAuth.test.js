@@ -312,6 +312,40 @@ describe("/request-token authentication", () => {
     );
   });
 
+  test("issues shared-session token in single-user mode", async () => {
+    mockSystemSettings.isMultiUserMode.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post("/request-token")
+      .send({ password: "single-user-secret" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.valid).toBe(true);
+    expect(response.body.token).toEqual(expect.any(String));
+    expect(mockTelemetrySend).toHaveBeenCalledWith(
+      "login_event",
+      { multiUserMode: false },
+      undefined
+    );
+  });
+
+  test("rejects invalid shared password in single-user mode", async () => {
+    mockSystemSettings.isMultiUserMode.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post("/request-token")
+      .send({ password: "bad-secret" });
+
+    expect(response.status).toBe(401);
+    expect(response.body.valid).toBe(false);
+    expect(response.body.message).toBe("[003] Invalid password provided");
+    expect(mockTelemetrySend).not.toHaveBeenCalledWith(
+      "login_event",
+      expect.any(Object),
+      expect.anything()
+    );
+  });
+
   test("returns recovery codes for first-time login", async () => {
     mockBcryptCompare.mockReturnValue(true);
     mockUserGet.mockResolvedValue({

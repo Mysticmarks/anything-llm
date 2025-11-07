@@ -102,23 +102,37 @@ jobs:
       - name: Setup environment and Prisma
         run: yarn setup:envs && yarn prisma:setup
 
-      - name: Run test suites with coverage
-        run: yarn test:coverage
+      - name: Start integration stack
+        run: docker compose -f docker/docker-compose.integration.yml up -d --build
 
-      - name: Upload coverage artifacts
+      - name: Seed integration fixtures
+        env:
+          STORAGE_DIR: ./server/storage
+        run: node server/scripts/seed-test-fixtures.js
+
+      - name: Wait for API readiness
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3001/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become ready in time"
+          exit 1
+
+      - name: Run full test suite
+        env:
+          PLAYWRIGHT_API_BASE: http://127.0.0.1:3001/api
+          PLAYWRIGHT_AUTH_PASSWORD: integration-secret
+          PLAYWRIGHT_ADMIN_USER: integration-admin
+          PLAYWRIGHT_UI_HOST: 127.0.0.1
+          PLAYWRIGHT_UI_PORT: "4173"
+          ANYTHINGLLM_API_KEY: integration-test-key
+          LOADTEST_WORKSPACE: regression
+          LOADTEST_BASE_URL: http://127.0.0.1:3001
+        run: yarn test
+
+      - name: Stop integration stack
         if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-report
-          path: coverage
-          if-no-files-found: ignore
-
-      - name: Build frontend for E2E tests
-        run: cd frontend && yarn build
-
-      - name: Run Playwright tests
-        run: cd frontend && yarn test:e2e --reporter=line
-
-      - name: Fail job on error
-        if: failure()
-        run: exit 1
+        run: docker compose -f docker/docker-compose.integration.yml down -v
