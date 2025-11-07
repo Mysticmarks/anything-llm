@@ -5,37 +5,34 @@ topology that powers the AnythingLLM server runtime. It covers the
 configuration that existed prior to this change set and the new concurrency
 infrastructure introduced here.
 
-## Process Supervision (`server/index.js`)
+## Process Supervision
 
-* `server/index.js` bootstraps the Express HTTP server and optionally launches
-  a cluster of worker processes through `cluster.fork`. The supervision logic
-  lives at the bottom of the file and is responsible for:
-  * Spawning `workerTarget` processes (derived from `supervisor.js`).
-  * Restarting crashed workers with an exponential back-off controlled by the
-    `restartDelay` configuration.
-  * Handling `SIGINT`/`SIGTERM` to gracefully terminate all workers.
-* HTTP listeners are still constructed in-process. Each worker initializes an
-  Express app, attaches endpoints, and – when HTTPS is disabled – binds the
-  HTTP server through `bootHTTP`.
+* `server/index.js` still supports the optional Node.js cluster described in
+  `supervisor.js`, but deployments now rely on the shared manifest defined in
+  `supervisor/manifest.js`.
+* The manifest enumerates the API server, collector, frontend preview, and the
+  stand-alone embedding worker. Exporters in `scripts/supervisor/export.js`
+  generate PM2, systemd, and Kubernetes configuration from the same source of
+  truth.
+* Startup probes reuse the readiness endpoint that wraps
+  `runStartupDiagnostics`, ensuring container orchestrators gate traffic until
+  secrets, Redis, and vector databases are reachable.
 
 ## Background Job Execution (`server/jobs`)
 
-* The job subsystem uses `worker_threads` to host dedicated BullMQ workers. The
-  entry point, `server/jobs/index.js`, spawns a single embedding worker thread
-  (`embeddingWorker.js`) unless `DISABLE_SERVER_JOB_WORKERS` is set.
-* `embeddingWorker.js` connects to Redis and consumes the
-  `embedding-jobs` BullMQ queue. Jobs run concurrently inside the worker
-  thread by leveraging BullMQ's `concurrency` option (default `2`).
-* Worker lifecycles are supervised: errors are logged, non-zero exits are
-  surfaced, and the parent process is notified once the worker is ready.
+* The embedding worker now runs as a dedicated Node.js process started via
+  `node server/jobs/embedding-service.js` or the `yarn worker:embedding` script.
+* The worker establishes its own Redis connection, consumes the
+  `embedding-jobs` BullMQ queue, and reports failures directly in its logs.
+* The API no longer spawns worker threads. External supervisors (PM2,
+  systemd, Kubernetes) are responsible for restart policies and scaling.
 
-## Worker Pools (`server/utils/workers`)
+## Worker Pools
 
-* The `WorkerPool` abstraction builds a configurable pool of
-  `worker_threads`. It powers synchronous embedding operations when the BullMQ
-  queue cannot be used (for example, when Redis is unavailable).
-* Pool size defaults to half the CPU count and tasks are dispatched in a FIFO
-  order. Timeout handling and external HTTP execution modes are supported.
+* The legacy `worker_threads` pool has been deprecated. Document ingestion now
+  requires the distributed scheduler; the in-process fallback has been removed.
+* The `ingestionQueue` utility remains for historical compatibility but is no
+  longer invoked by the embedding pipeline.
 
 ## New Concurrency Infrastructure
 
@@ -45,7 +42,7 @@ paths, three queue-backed primitives were added in `server/utils/concurrency`:
 | Component | Purpose | Default Concurrency |
 |-----------|---------|---------------------|
 | `chatQueue` | Controls streaming chat workloads handled via SSE. | `CHAT_QUEUE_CONCURRENCY` (default `4`). |
-| `ingestionQueue` | Governs synchronous document embedding when BullMQ or the worker pool are unavailable. | `INGESTION_QUEUE_CONCURRENCY` (default `3`). |
+| `ingestionQueue` | Retained for legacy flows; embedding now always relies on BullMQ. | `INGESTION_QUEUE_CONCURRENCY` (default `3`). |
 | `agentFlowQueue` | Serialises agent flow executions to prevent unbounded concurrent executions. | `AGENT_FLOW_QUEUE_CONCURRENCY` (default `2`). |
 
 Each queue is backed by the new `AsyncQueue` helper which provides:

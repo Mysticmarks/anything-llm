@@ -9,7 +9,6 @@ const { LatencyProfiler } = require("../utils/telemetry/latencyProfiler");
 const { enqueueEmbeddingJob, getQueueEvents } = require(
   "../utils/queues/embedQueue"
 );
-const { ingestionQueue } = require("../utils/concurrency");
 
 async function embedDocumentsInternal(workspace, additions = [], userId = null) {
   const pipelineSpan = LatencyProfiler.startSpan("embedding.pipeline", {
@@ -212,38 +211,6 @@ const Document = {
       return embedDocumentsInternal(workspace, additions, userId);
     }
 
-    const shouldUseWorkerPool =
-      process.env.USE_EMBEDDING_WORKER_POOL === "true" ||
-      !!process.env.EMBEDDING_POOL_MODE;
-
-    if (shouldUseWorkerPool) {
-      const { getEmbeddingWorkerPool } = require("../utils/workers");
-      const pool = getEmbeddingWorkerPool();
-      const job = pool.enqueue(
-        {
-          workspaceId: workspace.id,
-          additions,
-          userId,
-        },
-        {
-          timeout: Number(process.env.EMBEDDING_POOL_TIMEOUT_MS || 120000),
-        }
-      );
-
-      if (fireAndForget) {
-        job.result.catch((error) =>
-          console.error(
-            `\x1b[31m[Document]\x1b[0m Worker pool embedding job failed: ${
-              error?.message || error
-            }`
-          )
-        );
-        return { jobId: job.id };
-      }
-
-      return await job.result;
-    }
-
     let job = null;
     try {
       job = await enqueueEmbeddingJob({
@@ -255,46 +222,18 @@ const Document = {
       console.error(
         `\x1b[33m[Document]\x1b[0m Failed to enqueue embedding job: ${error?.message}`
       );
+      throw error;
     }
 
     if (!job) {
-      if (fireAndForget) {
-        ingestionQueue
-          .run(() => embedDocumentsInternal(workspace, additions, userId))
-          .catch((error) =>
-            console.error(
-              `\x1b[31m[Document]\x1b[0m Ingestion queue task failed: ${
-                error?.message
-              }`
-            )
-          );
-        return { jobId: null };
-      }
-
-      return ingestionQueue.run(() =>
-        embedDocumentsInternal(workspace, additions, userId)
-      );
+      throw new Error("Embedding job could not be enqueued");
     }
 
     if (fireAndForget) return { jobId: job.id };
 
     const events = await getQueueEvents();
     if (!events) {
-      if (fireAndForget) {
-        ingestionQueue
-          .run(() => embedDocumentsInternal(workspace, additions, userId))
-          .catch((error) =>
-            console.error(
-              `\x1b[31m[Document]\x1b[0m Ingestion queue task failed: ${
-                error?.message
-              }`
-            )
-          );
-        return { jobId: job?.id || null };
-      }
-      return ingestionQueue.run(() =>
-        embedDocumentsInternal(workspace, additions, userId)
-      );
+      throw new Error("Embedding queue events are unavailable");
     }
 
     try {

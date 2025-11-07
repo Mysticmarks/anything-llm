@@ -4,6 +4,7 @@ const {
   getConnection,
   isConnectionReady,
 } = require("./connection");
+const { setQueueMetrics } = require("../metrics/registry");
 const { EMBEDDING_QUEUE } = require("./embedQueue");
 
 const queues = new Map();
@@ -34,6 +35,13 @@ async function gatherQueueMetrics(name) {
     "delayed"
   );
   const workers = await handle.getWorkers();
+
+  setQueueMetrics(name, {
+    name,
+    pending: Number(counts.waiting || 0) + Number(counts.delayed || 0),
+    active: Number(counts.active || 0),
+    concurrency: workers.length || 0,
+  });
 
   return {
     name,

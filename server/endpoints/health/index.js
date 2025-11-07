@@ -2,6 +2,7 @@ const prisma = require("../../utils/prisma");
 const packageJson = require("../../package.json");
 const { isQueueBackendAvailable } = require("../../utils/queues/metrics");
 const { getConcurrencySnapshot } = require("../../utils/concurrency");
+const { getDiagnosticsSnapshot } = require("../../utils/startupDiagnostics");
 
 function buildResponsePayload(components = {}, statusCode = 200) {
   return {
@@ -55,6 +56,10 @@ async function handleReadinessProbe(_, response) {
     circuits: concurrency.circuits,
   };
   if (openCircuits.length && statusCode === 200) statusCode = 503;
+
+  const diagnostics = getDiagnosticsSnapshot();
+  if (diagnostics.status === "error") statusCode = 503;
+  components.startupDiagnostics = diagnostics;
 
   const payload = buildResponsePayload(components, statusCode);
   response.status(statusCode).json(payload);

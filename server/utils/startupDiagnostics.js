@@ -8,6 +8,13 @@ const LOG_PREFIX = "\x1b[36m[StartupDiagnostics]\x1b[0m";
 const WARN_PREFIX = "\x1b[33m[StartupDiagnostics]\x1b[0m";
 const ERROR_PREFIX = "\x1b[31m[StartupDiagnostics]\x1b[0m";
 
+const latestDiagnostics = {
+  status: "unknown",
+  checkedAt: null,
+  errors: [],
+  warnings: [],
+};
+
 const REQUIRED_SECRETS = [
   { key: "JWT_SECRET", minimum: 12 },
   { key: "SIG_KEY", minimum: 32 },
@@ -127,9 +134,7 @@ function validateDatabaseConfiguration(errors) {
   }
 }
 
-async function runStartupDiagnostics() {
-  console.log(`${LOG_PREFIX} Running server startup diagnostics...`);
-
+async function performDiagnostics() {
   const errors = [];
   const warnings = [];
 
@@ -140,11 +145,25 @@ async function runStartupDiagnostics() {
   await validateVectorProvider(errors);
   await validateRedis(errors);
 
+  const status = errors.length > 0 ? "error" : "ok";
+  latestDiagnostics.status = status;
+  latestDiagnostics.checkedAt = new Date().toISOString();
+  latestDiagnostics.errors = errors;
+  latestDiagnostics.warnings = warnings;
+
+  return { status, errors, warnings, checkedAt: latestDiagnostics.checkedAt };
+}
+
+async function runStartupDiagnostics() {
+  console.log(`${LOG_PREFIX} Running server startup diagnostics...`);
+
+  const { status, errors, warnings } = await performDiagnostics();
+
   for (const warning of warnings) {
     console.warn(`${WARN_PREFIX} ${warning}`);
   }
 
-  if (errors.length > 0) {
+  if (status === "error") {
     for (const error of errors) {
       console.error(`${ERROR_PREFIX} ${error}`);
     }
@@ -160,7 +179,15 @@ async function runStartupDiagnostics() {
       warnings.length ? ` with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : ""
     }.`
   );
-  return { errors, warnings };
+  return { status, errors, warnings, checkedAt: latestDiagnostics.checkedAt };
 }
 
-module.exports = { runStartupDiagnostics };
+function getDiagnosticsSnapshot() {
+  return { ...latestDiagnostics };
+}
+
+async function refreshDiagnostics() {
+  return performDiagnostics();
+}
+
+module.exports = { runStartupDiagnostics, getDiagnosticsSnapshot, refreshDiagnostics };

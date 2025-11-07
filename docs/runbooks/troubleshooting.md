@@ -21,12 +21,25 @@ Always annotate the incident timeline in your monitoring system and link back to
    - Check the currently deployed image tag against the latest release notes.
    - Validate environment variables using the `server/.env.production` template.
 2. Inspect health endpoints
-   - Issue a GET request to `/api/health`. Expect HTTP 200 with `status: ok`.
+   - Issue a GET request to `/api/health/ready`. Expect HTTP 200 with `status: ok` and `startupDiagnostics.status: "ok"`.
    - For websocket regressions, tail the gateway logs and confirm the build originated from the latest `yarn prod:server`
      artifact.
 3. Rollback and recovery
    - If a migration failed, apply `yarn prisma:reset` in a staging clone to reproduce before rolling back production.
    - Trigger the previous container image and re-run smoke tests defined in the release checklist.
+
+## 1a. Embedding worker incidents
+
+1. Verify queue health
+   - Call `/api/metrics` and confirm the `embedding-jobs` entry reports `available: true`.
+   - Check Prometheus gauge `anything_queue_active{queue="embedding-jobs"}` for sustained activity and `anything_queue_pending`
+     for backlog growth.
+2. Inspect the worker supervisor
+   - Ensure `node server/jobs/embedding-service.js` (or the equivalent systemd/PM2 unit) is running.
+   - Review logs for Redis connection errors or workspace lookup failures.
+3. Restore capacity
+   - Restart the worker service after resolving configuration or connectivity issues.
+   - Scale out by launching additional worker replicas if queue depth continues to climb.
 
 ## 2. Frontend regressions
 

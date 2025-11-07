@@ -533,6 +533,33 @@ function selectVectorDbEndpoint(provider) {
   return endpoint;
 }
 
+function parseListEnv(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flat().map((item) => String(item).trim()).filter(Boolean);
+  const trimmed = String(value).trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.flat().map((item) => String(item).trim()).filter(Boolean);
+    }
+  } catch (_error) {
+    // ignore JSON parsing errors and fall through to comma split
+  }
+  return trimmed
+    .split(",")
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+}
+
+function getCollectorRuntimeSettings() {
+  const allowAnyIp = String(process.env.COLLECTOR_ALLOW_ANY_IP || "false").toLowerCase();
+  return {
+    allowAnyIp: allowAnyIp === "true" || allowAnyIp === "1",
+    browserLaunchArgs: parseListEnv(process.env.ANYTHINGLLM_CHROMIUM_ARGS),
+  };
+}
+
 module.exports = {
   getEmbeddingEngineSelection,
   maximumChunkLength,
@@ -543,4 +570,5 @@ module.exports = {
   toChunks,
   getDistributedVectorDbConfig,
   selectVectorDbEndpoint,
+  getCollectorRuntimeSettings,
 };

@@ -16,8 +16,18 @@ function clientAbortedHandler(resolve, fullText) {
  * @param {Object} responseProps
  * @returns {Promise<string>}
  */
-function handleDefaultStreamResponseV2(response, stream, responseProps) {
-  const { uuid = uuidv4(), sources = [] } = responseProps;
+function handleDefaultStreamResponseV2(response, stream, responseProps = {}) {
+  const { uuid = uuidv4(), sources = [], streamingOptions = {} } = responseProps;
+
+  const extractToken =
+    typeof streamingOptions.extractToken === "function"
+      ? streamingOptions.extractToken
+      : (chunk, message) => message?.delta?.content;
+
+  const extractReasoningToken =
+    typeof streamingOptions.extractReasoningToken === "function"
+      ? streamingOptions.extractReasoningToken
+      : (chunk, message) => message?.delta?.reasoning_content;
 
   // Why are we doing this?
   // OpenAI do enable the usage metrics in the stream response but:
@@ -34,6 +44,8 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
 
   return new Promise(async (resolve) => {
     let fullText = "";
+    let reasoningText = "";
+    let reasoningOpen = false;
 
     // Establish listener to early-abort a streaming response
     // in case things go sideways or the user does not like the response.
@@ -46,12 +58,13 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
     response.on("close", handleAbort);
 
     // Now handle the chunks from the streamed response and append to fullText.
-    try {
-      for await (const chunk of stream) {
-        const message = chunk?.choices?.[0];
-        const token = message?.delta?.content;
+      try {
+        for await (const chunk of stream) {
+          const message = chunk?.choices?.[0];
+          const token = extractToken(chunk, message);
+          const reasoningToken = extractReasoningToken(chunk, message);
 
-        // If we see usage metrics in the chunk, we can use them directly
+          // If we see usage metrics in the chunk, we can use them directly
         // instead of estimating them, but we only want to assign values if
         // the response object is the exact same key:value pair we expect.
         if (
@@ -67,6 +80,48 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
             hasUsageMetrics = true; // to stop estimating counter
             usage.completion_tokens = Number(chunk.usage.completion_tokens);
           }
+        }
+
+        if (reasoningToken) {
+          const content = String(reasoningToken);
+          if (!reasoningOpen) {
+            writeResponseChunk(response, {
+              uuid,
+              sources: [],
+              type: "textResponseChunk",
+              textResponse: `<think>${content}`,
+              close: false,
+              error: false,
+            });
+            reasoningText += `<think>${content}`;
+            reasoningOpen = true;
+            continue;
+          }
+
+          reasoningText += content;
+          writeResponseChunk(response, {
+            uuid,
+            sources: [],
+            type: "textResponseChunk",
+            textResponse: content,
+            close: false,
+            error: false,
+          });
+          continue;
+        }
+
+        if (reasoningOpen && token) {
+          writeResponseChunk(response, {
+            uuid,
+            sources: [],
+            type: "textResponseChunk",
+            textResponse: `</think>`,
+            close: false,
+            error: false,
+          });
+          fullText += `${reasoningText}</think>`;
+          reasoningText = "";
+          reasoningOpen = false;
         }
 
         if (token) {
@@ -90,6 +145,19 @@ function handleDefaultStreamResponseV2(response, stream, responseProps) {
           message.finish_reason !== "" &&
           message.finish_reason !== null
         ) {
+          if (reasoningOpen) {
+            writeResponseChunk(response, {
+              uuid,
+              sources: [],
+              type: "textResponseChunk",
+              textResponse: `</think>`,
+              close: false,
+              error: false,
+            });
+            fullText += `${reasoningText}</think>`;
+            reasoningText = "";
+            reasoningOpen = false;
+          }
           writeResponseChunk(response, {
             uuid,
             sources,

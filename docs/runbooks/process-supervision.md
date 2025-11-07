@@ -1,64 +1,90 @@
 # Process supervision for bare-metal deployments
 
-AnythingLLM runs three long-lived services in production: the API server, the collector, and the Vite-based frontend preview. When deploying without Docker you should supervise these processes with a production-grade process manager to guarantee automatic restarts, log aggregation, and graceful shutdowns.
+AnythingLLM now publishes a single supervisor manifest (`supervisor/manifest.js`)
+that describes every long-lived service and the health probes they expose. The
+manifest powers three exporters:
 
-This runbook introduces a PM2 configuration bundled with the repository (`scripts/pm2.config.cjs`). PM2 is only a suggestion—you can adapt the same concepts to systemd, supervisord, or any equivalent tooling.
+| Exporter | Command | Output |
+|----------|---------|--------|
+| PM2 | `node scripts/supervisor/export.js pm2` | JSON ecosystem configuration used by `scripts/pm2.config.cjs`. |
+| systemd | `node scripts/supervisor/export.js systemd` | One unit file per service with `Environment` stanzas pre-populated. |
+| Kubernetes | `node scripts/supervisor/export.js kubernetes` | Deployment manifests that can be templated into Helm or Kustomize overlays. |
 
-## 1. Install dependencies
+The manifest tracks four processes:
+
+1. `anything-llm-server` – the Express API (`yarn prod:server`).
+2. `anything-llm-collector` – the ingestion collector (`yarn prod:collector`).
+3. `anything-llm-frontend` – the static preview server (`node scripts/start-frontend.mjs`).
+4. `anything-llm-embedding-worker` – the BullMQ embedding worker (`node server/jobs/embedding-service.js`).
+
+Each entry specifies its working directory, production environment variables,
+and a startup probe. HTTP probes point to `/api/health/ready`, `/healthz`, or `/`
+depending on the service. The worker exposes a queue probe so that dashboards
+can track whether the `embedding-jobs` Redis queue accepts work.
+
+## 1. Installing PM2 (optional)
 
 ```bash
 npm install -g pm2
 ```
 
-Ensure you have installed the workspace dependencies (`yarn setup`) and generated the SQLite schema (`yarn prisma:setup`). Provide production-ready environment files in `server/.env.production`, `collector/.env`, and `frontend/.env` before starting the stack.
-
-## 2. Review the configuration
-
-The PM2 ecosystem file defines one process per service:
-
-```javascript
-module.exports = {
-  apps: [
-    { name: "anything-llm-server", script: "yarn", args: "prod:server" },
-    { name: "anything-llm-collector", script: "yarn", args: "prod:collector" },
-    { name: "anything-llm-frontend", script: "node", args: "scripts/start-frontend.mjs" },
-  ],
-};
-```
-
-Each process inherits `NODE_ENV=production` and the frontend process exposes `FRONTEND_HOST`/`FRONTEND_PORT` overrides. Adjust memory limits, log retention, or environment overrides per your infrastructure needs.
-
-## 3. Launch and manage the stack
+The PM2 ecosystem file is generated from the manifest so that it always
+includes the embedding worker:
 
 ```bash
 pm2 start scripts/pm2.config.cjs
 pm2 status
-pm2 logs anything-llm-server
+pm2 logs anything-llm-embedding-worker
 ```
 
-The `pm2` command automatically restarts services after crashes and integrates with `pm2 save`/`pm2 startup` for boot-time launches. For zero-downtime reloads you can run `pm2 restart <process>` sequentially.
+Run `pm2 save` and `pm2 startup` after validating the stack so the processes
+restart automatically after reboots. `pm2 delete scripts/pm2.config.cjs` stops
+and removes all managed services.
 
-## 4. Stop and remove processes
+## 2. Generating systemd units
+
+`node scripts/supervisor/export.js systemd` prints one unit per service. Copy
+each block to `/etc/systemd/system/<name>.service`, tweak memory limits or
+user accounts, then reload and enable:
 
 ```bash
-pm2 stop scripts/pm2.config.cjs
-pm2 delete scripts/pm2.config.cjs
+sudo systemctl daemon-reload
+sudo systemctl enable --now anything-llm-server anything-llm-collector anything-llm-frontend anything-llm-embedding-worker
 ```
 
-Stopping deletes the managed processes but preserves the ecosystem file so you can restart later.
+Every unit invokes the production commands listed above and respects
+`SIGTERM`/`SIGINT` so Prisma, Redis, and BullMQ connections shut down cleanly.
 
-## 5. Alternative supervisors
+## 3. Kubernetes templates
 
-If you prefer not to use PM2, port the same commands to your supervisor of choice. For example, a `systemd` unit should execute `yarn prod:server` from the repo root with `WorkingDirectory` set appropriately. Make sure any supervisor sends `SIGINT`/`SIGTERM` for graceful shutdown so that Prisma and Bull queue connections close cleanly.
+`node scripts/supervisor/export.js kubernetes` emits JSON deployment skeletons.
+Replace `<replace-with-image>` with your published container image and wire the
+readiness probes into the appropriate service definitions. The embedding worker
+inherits the same image as the API server and relies exclusively on Redis for
+job dispatch.
 
-## 6. Health checks and monitoring
+## 4. Health probes and observability
 
-Regardless of the supervisor, add health endpoints to your monitoring stack:
+The readiness endpoint consolidates the `runStartupDiagnostics` results,
+database connectivity, queue availability, and circuit breaker status:
 
-- API server: `GET /system/health`
-- Collector: `GET /` (returns `{ ok: true }`)
-- Frontend: HTTP status check on the preview port
+- API server: `GET /api/health/ready` (HTTP 503 if diagnostics fail).
+- Collector: `GET /healthz` (falls back to `/` when not exposed).
+- Frontend: HTTP status check on `/`.
+- Embedding worker: monitor the `embedding-jobs` BullMQ queue depth via
+  `/api/metrics` or the Prometheus exporter.
 
-Combine these checks with log forwarding (e.g., PM2 log streams, journald, or Fluent Bit) to surface ingestion and agent flow errors early.
+Because the worker runs in its own process you can scale it independently by
+adding more supervisor entries or increasing the deployment replica count.
 
-By adopting a supervisor, bare-metal operators can match the resilience provided by Docker deployments without managing multiple shells manually.
+## 5. Failure handling
+
+The manifest centralises restart policy expectations across supervisors:
+
+- All services should restart on failure with at least a five-second back-off.
+- Supervisors must forward `SIGTERM` so graceful shutdown completes.
+- If startup diagnostics fail, the supervisor should mark the instance as
+  unhealthy and attempt a fresh start after configuration is corrected.
+
+By reusing the manifest, operators can keep PM2, systemd, and Kubernetes
+configurations in sync without duplicating process metadata.

@@ -1,4 +1,5 @@
 const { EncryptionManager } = require("../EncryptionManager");
+const { getCollectorRuntimeSettings } = require("../helpers");
 
 /**
  * @typedef {Object} CollectorOptions
@@ -6,7 +7,7 @@ const { EncryptionManager } = require("../EncryptionManager");
  * @property {string} WhisperModelPref - The model to use for whisper if set.
  * @property {string} openAiKey - The API key to use for OpenAI interfacing, mostly passed to OAI Whisper provider.
  * @property {Object} ocr - The OCR options
- * @property {{allowAnyIp: "true"|null|undefined}} runtimeSettings - The runtime settings that are passed to the collector. Persisted across requests.
+ * @property {{allowAnyIp: boolean, browserLaunchArgs: string[]}} runtimeSettings - The runtime settings that are passed to the collector. Persisted across requests.
  */
 
 // When running locally will occupy the 0.0.0.0 hostname space but when deployed inside
@@ -29,6 +30,8 @@ class CollectorApi {
    * @returns {CollectorOptions}
    */
   #attachOptions() {
+    const runtimeSettings = getCollectorRuntimeSettings();
+
     return {
       whisperProvider: process.env.WHISPER_PROVIDER || "local",
       WhisperModelPref: process.env.WHISPER_MODEL_PREF,
@@ -36,10 +39,7 @@ class CollectorApi {
       ocr: {
         langList: process.env.TARGET_OCR_LANG || "eng",
       },
-      runtimeSettings: {
-        allowAnyIp: process.env.COLLECTOR_ALLOW_ANY_IP ?? "false",
-        browserLaunchArgs: process.env.ANYTHINGLLM_CHROMIUM_ARGS ?? [],
-      },
+      runtimeSettings,
     };
   }
 

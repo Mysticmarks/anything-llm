@@ -167,8 +167,6 @@ async function startServer() {
     process.exit(1);
   }
 
-  require("./jobs").boot();
-
   const app = createApp();
   const port = Number(process.env.SERVER_PORT || 3001);
 
