@@ -1,6 +1,10 @@
 const { AsyncQueue } = require("./asyncQueue");
 const { CircuitBreaker } = require("./circuitBreaker");
-const { setQueueMetrics, setCircuitState } = require("../metrics/registry");
+const {
+  setQueueMetrics,
+  setCircuitState,
+  recordQueueDuration,
+} = require("../metrics/registry");
 
 const queueSnapshots = new Map();
 const circuitSnapshots = new Map();
@@ -13,6 +17,7 @@ function createQueue(name, options = {}) {
       queueSnapshots.set(name, snapshot);
       setQueueMetrics(name, snapshot);
     },
+    onTiming: (durationMs) => recordQueueDuration(name, durationMs),
   });
 
   // Seed metrics with initial snapshot
@@ -32,14 +37,23 @@ function createCircuit(name, options = {}) {
     onStateChange: (state, previous) => {
       circuitSnapshots.set(name, circuit.snapshot());
       if (previous !== state) {
-        setCircuitState(name, state);
+        setCircuitState(name, state, circuit.snapshot());
       }
     },
   });
 
+  const boundExec = circuit.exec.bind(circuit);
+  circuit.exec = async (...args) => {
+    try {
+      return await boundExec(...args);
+    } finally {
+      circuitSnapshots.set(name, circuit.snapshot());
+    }
+  };
+
   // initialize metrics
   circuitSnapshots.set(name, circuit.snapshot());
-  setCircuitState(name, circuit.state);
+  setCircuitState(name, circuit.state, circuit.snapshot());
 
   return circuit;
 }

@@ -61,3 +61,57 @@ node benchmarks/run-all.js
 Each script produces a JSON summary (including counts and average latency)
 after exercising the target workflow with the configured degree of
 concurrency.
+
+### k6 scenarios (CI-friendly)
+
+The k6 entry points mirror the Node harness and expose additional latency
+thresholds for alerting/error budgets. Supply the same environment variables
+and run them via `k6` directly:
+
+```bash
+# Chat streaming
+k6 run benchmarks/k6.chat.js \
+  -e BENCHMARK_BASE_URL=http://127.0.0.1:3001/api \
+  -e CHAT_WORKSPACE_SLUG=demo-workspace \
+  -e CHAT_VUS=16 -e CHAT_DURATION_SECONDS=45
+
+# Document ingestion
+k6 run benchmarks/k6.ingestion.js \
+  -e BENCHMARK_BASE_URL=http://127.0.0.1:3001/api \
+  -e INGESTION_WORKSPACE_ID=42 \
+  -e INGESTION_VUS=10 -e INGESTION_DURATION_SECONDS=60
+
+# Agent flows
+k6 run benchmarks/k6.agent.js \
+  -e BENCHMARK_BASE_URL=http://127.0.0.1:3001/api \
+  -e AGENT_FLOW_UUID=flow-uuid-here \
+  -e AGENT_VUS=8 -e AGENT_DURATION_SECONDS=45
+```
+
+Thresholds are configurable via `*_P95_BUDGET_MS` and `*_P99_BUDGET_MS` to
+surface failures in CI when latency error budgets are exceeded.
+
+### Artillery scenarios (arrival-rate tuned)
+
+Artillery configs match the same endpoints but describe arrival rates instead
+of virtual users. Each scenario reads environment variables so they can be
+used inside CI steps or locally:
+
+```bash
+# Chat
+node ./node_modules/.bin/artillery run benchmarks/artillery.chat.js \
+  --output ./artifacts/chat-report.json \
+  --overrides "{\"config\":{\"phases\":[{\"arrivalRate\":20,\"duration\":45}]}}"
+
+# Ingestion
+node ./node_modules/.bin/artillery run benchmarks/artillery.ingestion.js \
+  --output ./artifacts/ingestion-report.json
+
+# Agent flow
+node ./node_modules/.bin/artillery run benchmarks/artillery.agent.js \
+  --output ./artifacts/agent-report.json
+```
+
+Use `CHAT_ARRIVAL_RATE`, `INGESTION_ARRIVAL_RATE`, or `AGENT_ARRIVAL_RATE` to
+parameterise load without editing the files. Each report is JSON so CI can
+publish artifacts or charts directly.

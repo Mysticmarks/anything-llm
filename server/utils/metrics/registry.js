@@ -1,6 +1,7 @@
 const { EventEmitter } = require("events");
 
 const queueSnapshots = new Map();
+const queueDurations = new Map();
 const circuitSnapshots = new Map();
 const circuitTrips = new Map();
 const queueSaturations = new Map();
@@ -36,17 +37,32 @@ function setQueueMetrics(name, snapshot) {
   }
 }
 
+function recordQueueDuration(name, durationMs) {
+  if (!Number.isFinite(durationMs)) return;
+  const current = queueDurations.get(name) || { totalMs: 0, count: 0, maxMs: 0 };
+  const next = {
+    totalMs: current.totalMs + durationMs,
+    count: current.count + 1,
+    maxMs: Math.max(current.maxMs, durationMs),
+  };
+
+  queueDurations.set(name, next);
+  metricsEmitter.emit("queue_duration", { queue: name, durationMs });
+}
+
 const CIRCUIT_STATES = {
   closed: 0,
   half_open: 1,
   open: 2,
 };
 
-function setCircuitState(name, state) {
+function setCircuitState(name, state, snapshot = null) {
   const previous = circuitSnapshots.get(name)?.state;
+  const base = snapshot || circuitSnapshots.get(name) || {};
   circuitSnapshots.set(name, {
-    ...circuitSnapshots.get(name),
-    ...{ state, updatedAt: Date.now() },
+    ...base,
+    state,
+    updatedAt: Date.now(),
   });
   metricsEmitter.emit("circuit_state", {
     circuit: name,
@@ -96,10 +112,51 @@ async function getPrometheusMetrics() {
     lines.push(formatMetricLine("anything_queue_active", { queue: name }, snapshot.active));
   }
 
+  lines.push("# TYPE anything_queue_duration_avg_ms gauge");
+  for (const [name, timings] of queueDurations.entries()) {
+    const average = timings.count > 0 ? timings.totalMs / timings.count : 0;
+    lines.push(
+      formatMetricLine("anything_queue_duration_avg_ms", { queue: name }, Number(average.toFixed(2)))
+    );
+  }
+
+  lines.push("# TYPE anything_queue_duration_max_ms gauge");
+  for (const [name, timings] of queueDurations.entries()) {
+    lines.push(
+      formatMetricLine("anything_queue_duration_max_ms", { queue: name }, Number(timings.maxMs.toFixed(2)))
+    );
+  }
+
   lines.push("# TYPE anything_circuit_state gauge");
   for (const [name, snapshot] of circuitSnapshots.entries()) {
     const value = CIRCUIT_STATES[snapshot.state] ?? 0;
     lines.push(formatMetricLine("anything_circuit_state", { circuit: name }, value));
+  }
+
+  lines.push("# TYPE anything_circuit_error_budget_remaining gauge");
+  for (const [name, snapshot] of circuitSnapshots.entries()) {
+    const remaining = Math.max(
+      Number(snapshot.failureThreshold || 0) - Number(snapshot.failureCount || 0),
+      0
+    );
+    lines.push(
+      formatMetricLine(
+        "anything_circuit_error_budget_remaining",
+        { circuit: name },
+        remaining
+      )
+    );
+  }
+
+  lines.push("# TYPE anything_circuit_cooldown_ms gauge");
+  for (const [name, snapshot] of circuitSnapshots.entries()) {
+    lines.push(
+      formatMetricLine(
+        "anything_circuit_cooldown_ms",
+        { circuit: name },
+        Number(snapshot.cooldownPeriod || 0)
+      )
+    );
   }
 
   lines.push("# TYPE anything_circuit_trips_total counter");
@@ -154,4 +211,5 @@ module.exports = {
   metricsEmitter,
   recordAgentError,
   getStructuredEvents,
+  recordQueueDuration,
 };
