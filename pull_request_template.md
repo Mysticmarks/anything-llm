@@ -34,3 +34,10 @@ resolves #xxx
 - [ ] Relevant documentation has been updated
 - [ ] I have tested my code functionality
 - [ ] Docker build succeeds locally
+
+### Documentation Drift Check
+
+- [ ] Server changes: updated SRD architecture/data-flow sections and any impacted docs/api contracts; added a change-log entry.
+- [ ] Frontend changes: refreshed SRD UI flows/diagrams for navigation or accessibility updates.
+- [ ] Collector changes: synchronized SRD ingestion pipelines and connector references.
+- [ ] Ran `yarn docs:check` to validate SRD and changelog alignment.

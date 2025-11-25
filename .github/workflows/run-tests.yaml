@@ -102,6 +102,9 @@ jobs:
       - name: Setup environment and Prisma
         run: yarn setup:envs && yarn prisma:setup
 
+      - name: Validate documentation freshness
+        run: yarn docs:check
+
       - name: Start integration stack
         run: docker compose -f docker/docker-compose.integration.yml up -d --build
 

@@ -1,7 +1,7 @@
 ---
-version: 1.1.0
+version: 1.2.0
 status: Active
-last_updated: 2024-06-01
+last_updated: 2025-11-07
 owners:
   - Mintplex Labs Core Maintainers
 ---
@@ -13,27 +13,29 @@ This System Reference Document (SRD) provides a canonical snapshot of the Anythi
 
 ## Architecture Overview
 ### Logical Architecture
-AnythingLLM ships as a polyrepo-style monorepo with three primary runtime services and a rich client experience.
+AnythingLLM ships as a polyrepo-style monorepo with three primary runtime services, a reproducible integration harness, and a rich client experience.
 
 - **Frontend (`frontend/`)** — Vite-powered React application for workspace, agent, and content management.
 - **Server (`server/`)** — Node.js Express API orchestrating authentication, workspace configuration, vector database abstraction, agent execution, and long-running job scheduling.
 - **Collector (`collector/`)** — Dedicated ingestion service that normalizes raw files, web captures, and external connectors into structured workspace documents.
+- **Integration stack** — Docker Compose environment (`docker/docker-compose.integration.yml`) that provisions the server, frontend, collector, and a LiteLLM mock to exercise API contracts and seeded fixtures during CI.
 - **Shared storage** — SQLite (default) or PostgreSQL for relational data, LanceDB/PGVector/etc. for embeddings, and object storage for raw document artifacts.
 - **Integrations** — External LLM providers, MCP-compatible tools, and third-party vector databases configured per workspace.
 
 The [component diagram](./diagrams/system-components.md) visualizes module boundaries and integration points.
 
 ### Service Interactions
-User actions are funneled through the frontend, which authenticates against the server and invokes API endpoints. The server orchestrates requests across the agent runtime, vector adapters, and ingestion queues, delegating heavy lifting to the collector where needed. Streaming responses flow back to the frontend to drive live chat updates.
+User actions are funneled through the frontend, which authenticates against the server and invokes API endpoints. The server orchestrates requests across the agent runtime, vector adapters, and ingestion queues, delegating heavy lifting to the collector where needed. Streaming responses flow back to the frontend to drive live chat updates, while metrics are emitted through `server/utils/metrics/registry.js` for `/metrics` and `/metrics/prometheus` exposure.
 
 The [agent orchestration sequence](./diagrams/agent-orchestration-sequence.md) details this choreography.
 
 ### Data Flow Summary
-1. **Session establishment** — Frontend or browser extension clients exchange credentials (session cookie, API key, or invite code) with `/request-token` or `/v1/auth`. Successful logins hydrate the session store with user, workspace, and feature flag context.
+1. **Session establishment** — Frontend or browser extension clients exchange credentials (session cookie, API key, or invite code) with `/request-token` or `/v1/auth`. Successful logins hydrate the session store with user, workspace, and feature flag context; contract tests in `server/__tests__/endpoints/systemAuth.test.js` assert these paths against the integration stack.
 2. **Request routing** — Authenticated calls land on Express routers grouped by domain (`workspaces`, `agentFlows`, `embed`, `mobile`, etc.). Middlewares enforce rate limits, role-based access, and request validation before controllers execute.
-3. **Domain execution** — Controllers coordinate Prisma models, vector adapters, MCP bridges, and concurrency primitives (`chatQueue`, `ingestionQueue`, `agentFlowQueue`) to execute the workload. Long-running ingestion jobs spill to BullMQ workers via `server/jobs`.
+3. **Domain execution** — Controllers coordinate Prisma models, vector adapters, MCP bridges, and concurrency primitives (`chatQueue`, `ingestionQueue`, `agentFlowQueue`) to execute the workload. Long-running ingestion jobs spill to BullMQ workers via `server/jobs` and emit queue-depth gauges through the metrics registry.
 4. **Persistence** — Workspace, document, and telemetry updates persist through Prisma transactions while embedding payloads are stored in the configured vector database namespace.
-5. **Delivery** — Responses surface through REST JSON, server-sent events, or WebSocket streams. Observability hooks emit metrics (`/metrics`, `/metrics/prometheus`) and event logs for the runbooks linked later in this SRD.
+5. **Delivery** — Responses surface through REST JSON, server-sent events, or WebSocket streams. Observability hooks emit metrics and event logs that power runbooks and the `/metrics/prometheus` endpoint validated during integration tests.
+6. **Verification & drift control** — PRs that adjust API contracts, UI flows, or ingestion logic must pass `yarn docs:check`, which ensures SRD freshness and change-log alignment; CI enforces this gate alongside integration stacks.
 
 ### Concurrency & Scaling
 - **Process supervision** — `server/index.js` launches an Express worker per CPU (configurable through `supervisor.js`) and restarts unhealthy workers with a bounded back-off. Signal handlers drain workers to keep Prisma and Redis connections consistent.
@@ -140,6 +142,7 @@ Refer to the [sequence diagram](./diagrams/agent-orchestration-sequence.md) for 
 ### Embed & Browser Extension Journeys
 - **Embed widgets** — The embed dashboard issues API keys, configures tone/model, and surfaces `/embed/:embedId/stream-chat` transcripts for review.
 - **Browser extension** — Users register with `/browser-extension/api-keys/new`, install the Chrome extension, and push snippets via `/browser-extension/embed-content`. The extension surfaces workspace suggestions and respects rate limits configured in `SystemSettings`.
+- **Accessibility & theming** — Keyboard shortcuts, modal focus trapping (`frontend/src/hooks/useAccessibleModal.js`), and theme persistence (`frontend/src/hooks/useTheme.js`) surface across dashboards. The `KeyboardShortcutsHelp` overlay provides discoverable navigation aids for workspaces and admin flows.
 
 ### Mobile Companion
 1. Admin generates a device token from `/mobile/register` (exposed in the admin UI).
@@ -162,6 +165,11 @@ The SRD version in the front matter must match the latest entry in [`docs/CHANGE
 3. Record the change under a new heading in the change log with explicit references to SRD updates and associated code modules.
 
 Automation in `yarn docs:check` validates the SRD structure and ensures the change log contains an entry for the declared version.
+
+## Recent Code Alignments (v1.2.0)
+- **Integration stack & contract coverage** (Architecture, Data Flow) — Added Docker Compose integration topology with LiteLLM mock and seeded fixtures (`docker/docker-compose.integration.yml`, `server/scripts/seed-test-fixtures.js`, `frontend/tests/e2e/helpers/backend.js`) to validate `/api/health`, system auth, chat, and agent flow endpoints.
+- **Accessibility and observability improvements** (UI Flows, Agent Orchestration) — Refined keyboard shortcuts, focus management, and theme persistence (`frontend/src/utils/accessibility.js`, `frontend/src/hooks/useAccessibleModal.js`, `frontend/src/hooks/useTheme.js`) while expanding metrics instrumentation for agents and transport (`server/utils/metrics/registry.js`, `server/endpoints/metrics.js`).
+- **API surface documentation** (Architecture, Data Flow) — Server endpoint contracts now centralized in [`docs/api/server-endpoints.md`](./api/server-endpoints.md) to mirror Express routers and system authentication paths; no schema migrations were introduced in this cycle.
 
 ## Traceability Matrix
 | SRD Section | Primary Repositories | Notes |
