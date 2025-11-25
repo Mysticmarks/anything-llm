@@ -1,0 +1,39 @@
+groups:
+  - name: anythingllm-health
+    interval: 30s
+    rules:
+      - alert: AnythingLLMHighErrorRate
+        expr: sum(rate(http_server_requests_total{status=~"5.."}[5m])) / sum(rate(http_server_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AnythingLLM 5xx error rate above 5%"
+          description: "Sustained API failures detected across the last 10 minutes."
+
+      - alert: AnythingLLMQueueBacklog
+        expr: sum(anything_queue_pending) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pending jobs have exceeded 100"
+          description: "Collector or workspace ingestion is lagging; investigate queue workers and upstream providers."
+
+      - alert: AnythingLLMCircuitTrip
+        expr: increase(anything_circuit_trips_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breakers are tripping"
+          description: "One or more concurrency circuits opened in the last 15 minutes. Check upstream LLM provider stability."
+
+      - alert: AnythingLLMAgentErrors
+        expr: rate(anything_agent_errors_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent runtime is surfacing errors"
+          description: "Recent agent executions are failing; inspect provider credentials or plugins."

@@ -41,6 +41,11 @@ The Helm chart can ship a Grafana dashboard as a ConfigMap labeled `grafana_dash
    - Work queue depth and saturation frequency
    - Agent error breakdown by provider
 
+If you prefer to import a dashboard directly, use the JSON artifact at
+[`extras/observability/dashboards/anythingllm-prometheus.json`](../../extras/observability/dashboards/anythingllm-prometheus.json).
+The layout mirrors the Helm ConfigMap but adds queue saturation and agent error
+facets wired to the `/metrics/prometheus` endpoint.
+
 ### Structured event stream
 
 `/api/metrics` now includes an `events` payload with aggregated counts for queue saturation, circuit breaker trips, and agent errors. The server emits the same payload on an in-process event emitter (`metricsEmitter`) so custom sinks (e.g., Grafana Loki or a webhook bridge) can subscribe without polling. Each event object carries the triggering queue/circuit, the current total, and a timestamp suitable for alert annotations.
@@ -54,6 +59,12 @@ The Helm chart can ship a Grafana dashboard as a ConfigMap labeled `grafana_dash
 | Pod memory usage | >90% for 10 minutes | Check for memory leaks, consider raising container limits. |
 | `queue_jobs_ready` | >100 pending for 15 minutes | Collector lagging—scale collector workers or investigate downstream APIs. |
 | `kube_pod_container_status_restarts_total` | >=3 restarts/hour | Pull diagnostics (`kubectl logs`), verify probes and dependencies. |
+
+Example Prometheus rules for the above alerts (plus circuit trips and agent
+errors) live in
+[`extras/observability/alerts/anythingllm-prometheus-rules.yaml`](../../extras/observability/alerts/anythingllm-prometheus-rules.yaml).
+Apply them via Prometheus Operator or a plain `kubectl apply -f` in the monitoring
+namespace to keep `/metrics/prometheus` coverage aligned with production SLOs.
 
 ## Alert routing
 
@@ -86,5 +97,6 @@ kubectl describe servicemonitor -n <monitoring-namespace> anythingllm
 - Integrate `node scripts/load-test.mjs --profile chat-streaming` into staging release pipelines. The script emits `queue_jobs_active` and circuit-breaker metrics that map directly to the Grafana dashboard described above.
 - Run `node scripts/run-tests.mjs --target server` after scaling events to verify the Prometheus and health endpoints (`/metrics`, `/health/ready`) still return success.
 - Schedule `node scripts/check-docs-freshness.mjs` weekly to flag when observability configuration or runbooks fall behind code changes.
+- CI smoke deployments use [`scripts/ci/smoke-check.mjs`](../../scripts/ci/smoke-check.mjs) to validate `/api/health`, `/metrics/prometheus`, workspace creation, and chat streaming against both Docker Compose and kind. Reuse the script when rolling your own staging checks.
 
 Keep this runbook close to the alerts by linking it in Alertmanager annotations or your paging tool of choice.

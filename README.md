@@ -18,6 +18,9 @@
   <a href="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/build-and-push-image.yaml" target="_blank">
     <img src="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/build-and-push-image.yaml/badge.svg?event=push" alt="Container release status" />
   </a>
+  <a href="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/platform-ci.yaml" target="_blank">
+    <img src="https://github.com/Mintplex-Labs/anything-llm/actions/workflows/platform-ci.yaml/badge.svg?event=push" alt="Platform smoke status" />
+  </a>
 </p>
 
 <p align="center">
@@ -183,6 +186,13 @@ responsive and can communicate with the backing database; a `503 Service
 Unavailable` response means the server is running but cannot reach the
 database, which is a strong signal for operators to investigate before the
 instance begins serving traffic again.
+
+### CI artifacts and observability assets
+
+- **Platform smoke & migration checks:** See the [platform verification workflow](.github/workflows/platform-ci.yaml) for multi-platform image builds, Prisma migration dry-runs, Helm linting, and Docker Compose/kind smoke deployments.
+- **Dashboards:** Import the Prometheus/Grafana dashboard JSON at [`extras/observability/dashboards/anythingllm-prometheus.json`](extras/observability/dashboards/anythingllm-prometheus.json) to visualise `/metrics` output alongside Kubernetes HTTP metrics.
+- **Alerts:** Load the Prometheus rules in [`extras/observability/alerts/anythingllm-prometheus-rules.yaml`](extras/observability/alerts/anythingllm-prometheus-rules.yaml) to page on queue backlogs, circuit trips, and agent errors.
+- **Coverage & benchmarks:** Generate coverage locally with `yarn test:coverage` (see [`scripts/run-coverage.mjs`](scripts/run-coverage.mjs)) and reuse [`scripts/load-test.mjs`](scripts/load-test.mjs) for benchmark runs; publish the resulting reports as workflow artifacts to keep the badges above green.
 
 ## 🛳 Self-Hosting
 
