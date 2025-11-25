@@ -28,6 +28,9 @@ class CircuitBreaker {
       successCount: this.successCount,
       nextAttempt: this.nextAttempt,
       lastError: this.lastError,
+      failureThreshold: this.failureThreshold,
+      successThreshold: this.successThreshold,
+      cooldownPeriod: this.cooldownPeriod,
     };
   }
 

@@ -5,11 +5,13 @@ class AsyncQueue {
     name,
     concurrency = 1,
     onUpdate = null,
+    onTiming = null,
   }) {
     if (!name) throw new Error("AsyncQueue requires a name");
     this.name = name;
     this.concurrency = Math.max(1, Number(concurrency) || 1);
     this.onUpdate = typeof onUpdate === "function" ? onUpdate : null;
+    this.onTiming = typeof onTiming === "function" ? onTiming : null;
     this.queue = [];
     this.active = 0;
   }
@@ -107,6 +109,8 @@ class AsyncQueue {
       this.active += 1;
       this.updateMetrics();
 
+      const startedAt = Date.now();
+
       (async () => {
         try {
           const result = await task.fn();
@@ -126,6 +130,16 @@ class AsyncQueue {
           }
           this.active -= 1;
           this.updateMetrics();
+          if (this.onTiming) {
+            const duration = Date.now() - startedAt;
+            try {
+              this.onTiming(duration);
+            } catch (error) {
+              console.warn(
+                `\x1b[33m[AsyncQueue:${this.name}]\x1b[0m Failed to emit timing: ${error?.message}`
+              );
+            }
+          }
           this.process();
         }
       })();
