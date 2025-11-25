@@ -1,0 +1,81 @@
+{
+  "title": "AnythingLLM Metrics",
+  "tags": ["anythingllm", "ops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "API availability",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_total{status=~\"2..\"}[5m])) / sum(rate(http_server_requests_total[5m]))",
+          "legendFormat": "5m success rate"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth & active workers",
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "sum(anything_queue_pending)", "legendFormat": "pending"},
+        {"expr": "sum(anything_queue_active)", "legendFormat": "active"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue saturation events",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(anything_queue_saturation_total[15m])",
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit breaker state",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "anything_circuit_state",
+          "legendFormat": "{{circuit}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"drawStyle": "lines"}}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent error rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(anything_agent_errors_total[5m])",
+          "legendFormat": "{{agent}} / {{provider}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP request throughput",
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "sum(rate(http_server_requests_total[5m]))", "legendFormat": "req/s"},
+        {"expr": "sum(rate(http_server_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20}
+    }
+  ],
+  "time": {"from": "now-6h", "to": "now"}
+}

@@ -1,0 +1,224 @@
+name: Platform verification and smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/platform-ci.yaml'
+      - 'docker/**'
+      - 'cloud-deployments/**'
+      - 'scripts/ci/**'
+      - 'server/**'
+      - 'package.json'
+      - 'yarn.lock'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/platform-ci.yaml'
+      - 'docker/**'
+      - 'cloud-deployments/**'
+      - 'scripts/ci/**'
+      - 'server/**'
+      - 'package.json'
+      - 'yarn.lock'
+
+jobs:
+  build-multi-platform:
+    name: Build & push container (multi-platform)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: v0.22.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=${{ matrix.platform }}-
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          pull: true
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platform }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  prisma-migration-dry-run:
+    name: Schema migration dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Cache server dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            server/node_modules
+            ~/.cache/yarn
+          key: ${{ runner.os }}-server-${{ hashFiles('server/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-server-
+
+      - name: Install server deps
+        if: steps.cache-server.outputs.cache-hit != 'true'
+        run: cd server && yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: server
+        run: npx prisma generate --schema=./prisma/schema.prisma
+
+      - name: Apply migrations against temp db
+        env:
+          DATABASE_URL: file:./tmp-ci.db
+        working-directory: server
+        run: npx prisma migrate deploy --schema=./prisma/schema.prisma
+
+  helm-lint:
+    name: Helm chart linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.13.3
+
+      - name: Lint chart
+        run: |
+          helm lint cloud-deployments/helm/charts/anythingllm \
+            --set image.repository=ghcr.io/${{ github.repository }} \
+            --set image.tag=test \
+            --set metrics.enabled=true \
+            --set metrics.serviceMonitor.enabled=true
+
+  smoke-docker-compose:
+    name: Docker Compose smoke
+    runs-on: ubuntu-latest
+    needs: [build-multi-platform]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Start integration stack
+        run: docker compose -f docker/docker-compose.integration.yml up -d --build
+
+      - name: Wait for API readiness
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3001/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API not ready"
+          exit 1
+
+      - name: Run smoke checks
+        env:
+          ANYTHINGLLM_BASE_URL: http://127.0.0.1:3001/api
+          ANYTHINGLLM_AUTH_PASSWORD: integration-secret
+        run: node scripts/ci/smoke-check.mjs
+
+      - name: Stop integration stack
+        if: always()
+        run: docker compose -f docker/docker-compose.integration.yml down -v
+
+  smoke-kind:
+    name: Kind smoke (Helm)
+    runs-on: ubuntu-latest
+    needs: [helm-lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install kind
+        uses: helm/kind-action@v1.8.0
+
+      - name: Build local image
+        run: |
+          docker build -t anythingllm:kind -f docker/Dockerfile .
+          kind load docker-image anythingllm:kind
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.13.3
+
+      - name: Install chart into kind
+        run: |
+          kubectl create namespace anythingllm || true
+          helm install anythingllm cloud-deployments/helm/charts/anythingllm \
+            --namespace anythingllm \
+            --set image.repository=anythingllm \
+            --set image.tag=kind \
+            --set config.AUTH_TOKEN=kind-secret \
+            --set config.DISABLE_TELEMETRY=true \
+            --set metrics.enabled=true \
+            --set metrics.serviceMonitor.enabled=true \
+            --set autoscaling.enabled=false \
+            --set replicaCount=1
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/anythingllm -n anythingllm --timeout=300s
+
+      - name: Port-forward service
+        run: nohup kubectl port-forward svc/anythingllm -n anythingllm 8080:3001 >/tmp/kubectl-port-forward.log 2>&1 &
+
+      - name: Run smoke checks against kind
+        env:
+          ANYTHINGLLM_BASE_URL: http://127.0.0.1:8080/api
+          ANYTHINGLLM_AUTH_PASSWORD: kind-secret
+          METRICS_PATH: /metrics/prometheus
+          SKIP_CHAT_CHECK: "true"
+        run: node scripts/ci/smoke-check.mjs
+
+      - name: Dump port-forward logs on failure
+        if: failure()
+        run: cat /tmp/kubectl-port-forward.log
