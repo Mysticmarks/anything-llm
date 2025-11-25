@@ -8,9 +8,11 @@ sequenceDiagram
     participant Collector as Collector Service
     participant VectorDB as Vector Database Layer
     participant LLM as LLM Provider
+    participant Metrics as Metrics/Telemetry
 
     UI->>API: Submit agent task with workspace context
     API->>Orchestrator: Normalize request, load workspace config
+    API->>Metrics: Record request/rate limiter counters
     Orchestrator->>VectorDB: Retrieve contextual embeddings
     Orchestrator->>Collector: Schedule ingestion follow-ups (if required)
     Orchestrator->>LLM: Compose prompt and tools metadata
@@ -18,4 +20,5 @@ sequenceDiagram
     Orchestrator->>VectorDB: Persist conversation embeddings
     Orchestrator->>API: Stream agent response payload
     API-->>UI: Deliver final response & citations
+    API-->>Metrics: Emit latency, queue depth, and stream completion events
 ```

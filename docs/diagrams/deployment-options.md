@@ -5,6 +5,7 @@ graph TD
     subgraph Local
         Desktop[Desktop App]
         Docker[Docker Compose]
+        Integration[Integration Compose (LiteLLM mock + Playwright)]
     end
 
     subgraph Cloud
@@ -15,6 +16,7 @@ graph TD
 
     Devs[Developers/Operators] -->|Deploy| Desktop
     Devs -->|Deploy| Docker
+    Devs -->|Run CI| Integration
     Devs -->|Provision| AWS
     Devs -->|Provision| GCP
     Devs -->|Provision| BareMetal
@@ -25,6 +27,9 @@ graph TD
     Docker -->|Containers| Frontend
     Docker -->|Containers| Server
     Docker -->|Containers| Collector
+    Integration -->|Contracts| Frontend
+    Integration -->|Contracts| Server
+    Integration -->|Contracts| Collector
 
     AWS -->|Container Tasks| Frontend
     AWS -->|Container Tasks| Server

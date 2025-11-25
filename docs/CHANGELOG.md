@@ -1,5 +1,8 @@
 ---
 srd_versions:
+  - version: 1.2.0
+    date: 2025-11-07
+    summary: Added integration stack coverage, observability updates, and accessibility workflows to the SRD with enforced doc drift checks.
   - version: 1.1.0
     date: 2024-06-01
     summary: Added concurrency, provider integration, and automation updates to the SRD alongside new API inventory docs.
@@ -27,6 +30,16 @@ The change log records the relationship between code-level changes and SRD updat
    ```
 
 4. Run `yarn docs:check` locally to validate the SRD schema, markdown formatting, and change-log linkage.
+
+## [1.2.0] - 2025-11-07
+### SRD
+- Updated architecture overview, data-flow summary, and diagrams to cover the integration Compose stack, LiteLLM mock, and metrics/telemetry emitters referenced by `/metrics` and `/metrics/prometheus`.
+- Documented accessibility-centered UI flows for keyboard shortcuts, modal focus management, and theme persistence across workspace and admin experiences.
+- Added a doc drift control path requiring `yarn docs:check` for PRs that modify server/frontend/collector boundaries and mapped the latest merges in a dedicated SRD section.
+
+### Code Alignment
+- Integration stack and contract fixtures: `docker/docker-compose.integration.yml`, `server/scripts/seed-test-fixtures.js`, `server/__tests__/endpoints/systemAuth.test.js`, `server/__tests__/endpoints/chatFlow.test.js`, `server/__tests__/endpoints/agentFlows.test.js`, and `frontend/tests/e2e/helpers/backend.js`.
+- Accessibility and observability updates: `frontend/src/utils/accessibility.js`, `frontend/src/hooks/useAccessibleModal.js`, `frontend/src/hooks/useTheme.js`, `frontend/src/components/KeyboardShortcutsHelp/index.jsx`, `server/utils/metrics/registry.js`, and `.github/workflows/run-tests.yaml` (docs gate).
 
 ## [1.1.0] - 2024-06-01
 ### SRD
