@@ -1,6 +1,5 @@
 {
   "name": "anything-llm-frontend",
-  "private": false,
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -10,7 +9,10 @@
     "lint": "yarn prettier --ignore-path ../.prettierignore --write ./src",
     "preview": "vite preview",
     "test:e2e": "npx @playwright/test@1.45.0 test",
-    "test": "yarn test:e2e"
+    "test": "yarn test:e2e",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build",
+    "storybook:test": "storybook test --watch=false --ci"
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
@@ -19,6 +21,7 @@
     "@tremor/react": "^3.15.1",
     "dompurify": "^3.0.8",
     "file-saver": "^2.0.5",
+    "framer-motion": "^11.0.0",
     "he": "^1.2.0",
     "highlight.js": "^11.9.0",
     "i18next": "^23.11.3",
@@ -41,7 +44,6 @@
     "react-i18next": "^14.1.1",
     "react-loading-skeleton": "^3.1.0",
     "react-router-dom": "^6.3.0",
-    "framer-motion": "^11.0.0",
     "react-speech-recognition": "^3.10.0",
     "react-tag-input-component": "^2.0.2",
     "react-toastify": "^9.1.3",
@@ -59,6 +61,13 @@
     "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^4.0.0-beta.0",
     "autoprefixer": "^10.4.14",
+    "@storybook/addon-a11y": "^8.1.10",
+    "@storybook/addon-essentials": "^8.1.10",
+    "@storybook/addon-interactions": "^8.1.10",
+    "@storybook/react": "^8.1.10",
+    "@storybook/react-vite": "^8.1.10",
+    "@storybook/test-runner": "^0.18.0",
+    "@storybook/testing-library": "^0.2.2",
     "buffer": "^6.0.3",
     "cross-env": "^7.0.3",
     "eslint": "^8.50.0",

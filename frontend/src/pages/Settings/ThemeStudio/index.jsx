@@ -3,6 +3,7 @@ import Sidebar from "@/components/SettingsSidebar";
 import { isMobile } from "react-device-detect";
 import { useTheme } from "@/hooks/useTheme";
 import { motion } from "framer-motion";
+import { DEFAULT_PROCEDURAL_CONFIG } from "@/utils/themeTokens";
 
 const COLOR_CHANNELS = [
   { key: "h", label: "Hue", min: 0, max: 360 },
@@ -102,6 +103,8 @@ export default function ThemeStudio() {
     animation,
     setAnimation,
     animationMultiplier,
+    proceduralConfig,
+    setProceduralConfig,
   } = useTheme();
 
   const previewDensity = DENSITY_SCALE[density] ?? 1;
@@ -284,6 +287,98 @@ export default function ThemeStudio() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-theme-home-border bg-theme-bg-primary p-6 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold uppercase text-theme-text-secondary">
+                    Procedural Palette
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setProceduralConfig(DEFAULT_PROCEDURAL_CONFIG)}
+                    className="text-[11px] uppercase tracking-wide text-theme-text-secondary hover:text-theme-button-primary"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <p className="text-xs text-theme-text-secondary">
+                  Dark-mode-first overlays and accent boosts are validated and
+                  persisted per user. Adjust the sliders to rebalance derived
+                  surfaces without harming contrast targets.
+                </p>
+
+                <label
+                  className="text-xs text-theme-text-secondary flex flex-col gap-2"
+                  htmlFor="dark-floor"
+                >
+                  <span>
+                    Dark mode floor (Value {Math.round(proceduralConfig.darkModeFloor)})
+                  </span>
+                  <input
+                    id="dark-floor"
+                    aria-label="Dark mode floor value"
+                    type="range"
+                    min="6"
+                    max="40"
+                    step="1"
+                    value={proceduralConfig.darkModeFloor}
+                    onChange={(event) =>
+                      setProceduralConfig({
+                        darkModeFloor: Number(event.target.value),
+                      })
+                    }
+                    className="w-full accent-theme-button-primary"
+                  />
+                </label>
+
+                <label
+                  className="text-xs text-theme-text-secondary flex flex-col gap-2"
+                  htmlFor="accent-boost"
+                >
+                  <span>
+                    Accent saturation boost ({proceduralConfig.accentSaturationBoost}%)
+                  </span>
+                  <input
+                    id="accent-boost"
+                    aria-label="Accent saturation boost"
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value={proceduralConfig.accentSaturationBoost}
+                    onChange={(event) =>
+                      setProceduralConfig({
+                        accentSaturationBoost: Number(event.target.value),
+                      })
+                    }
+                    className="w-full accent-theme-button-primary"
+                  />
+                </label>
+
+                <label
+                  className="text-xs text-theme-text-secondary flex flex-col gap-2"
+                  htmlFor="overlay-strength"
+                >
+                  <span>
+                    Overlay strength ({Math.round(proceduralConfig.overlayOpacity * 100)}%)
+                  </span>
+                  <input
+                    id="overlay-strength"
+                    aria-label="Procedural overlay strength"
+                    type="range"
+                    min="0.35"
+                    max="0.92"
+                    step="0.01"
+                    value={proceduralConfig.overlayOpacity}
+                    onChange={(event) =>
+                      setProceduralConfig({
+                        overlayOpacity: Number(event.target.value),
+                      })
+                    }
+                    className="w-full accent-theme-button-primary"
+                  />
+                </label>
               </div>
             </div>
           </section>

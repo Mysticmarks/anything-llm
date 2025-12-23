@@ -8,6 +8,10 @@ import {
   describeContrastFailures,
   formatContrastReport,
 } from "@/utils/accessibility";
+import {
+  DEFAULT_PROCEDURAL_CONFIG,
+  validateProceduralConfig,
+} from "@/utils/themeTokens";
 
 const DENSITY_SCALE = {
   compact: 0.92,
@@ -263,6 +267,7 @@ function createPresetState(presetKey) {
     typography: { ...preset.typography },
     density: preset.density,
     animation: preset.animation,
+    proceduralConfig: { ...DEFAULT_PROCEDURAL_CONFIG },
     isCustom: false,
   };
 }
@@ -300,6 +305,7 @@ function sanitizeThemeState(rawState) {
     },
     density: rawState.density || defaultState.density,
     animation: rawState.animation || defaultState.animation,
+    proceduralConfig: validateProceduralConfig(rawState.proceduralConfig),
     isCustom: Boolean(rawState.isCustom),
   };
 }
@@ -584,20 +590,38 @@ function deriveCssVariables(paletteHex) {
   };
 }
 
-function buildProceduralPalette(paletteHex) {
+function buildProceduralPalette(paletteHex, config = DEFAULT_PROCEDURAL_CONFIG) {
+  const normalized = validateProceduralConfig(config);
+  const mode = computeModeFromPalette(paletteHex);
+  const backgroundHsv = hexToHsv(paletteHex.background);
+  const adjustedBackground =
+    mode === "dark"
+      ? hsvToHex({
+          ...backgroundHsv,
+          v: Math.min(backgroundHsv.v, normalized.darkModeFloor),
+        })
+      : paletteHex.background;
+
+  const accentLifted = adjustSaturation(
+    paletteHex.accent,
+    normalized.accentSaturationBoost
+  );
   const accentContrastColor =
-    contrastRatio(paletteHex.accent, "#000000") >= 4.5 ? "#000000" : "#ffffff";
+    contrastRatio(accentLifted, "#000000") >= 4.5 ? "#000000" : "#ffffff";
 
   const tokens = {
-    surfaceRaised: mix(paletteHex.surface, paletteHex.background, 0.35),
-    surfaceSunken: mix(paletteHex.surface, paletteHex.background, 0.15),
+    surfaceRaised: mix(paletteHex.surface, adjustedBackground, 0.35),
+    surfaceSunken: mix(paletteHex.surface, adjustedBackground, 0.15),
     surfaceBorder: withAlpha(paletteHex.border, 0.55),
     borderStrong: mix(paletteHex.border, paletteHex.text, 0.25),
-    accentStrong: adjustValue(paletteHex.accent, 6),
-    accentMuted: withAlpha(paletteHex.accent, 0.18),
+    accentStrong: adjustValue(accentLifted, 6),
+    accentMuted: withAlpha(accentLifted, 0.18),
     accentContrast: accentContrastColor,
-    overlaySoft: withAlpha(paletteHex.background, 0.6),
-    overlayStrong: withAlpha(paletteHex.background, 0.8),
+    overlaySoft: withAlpha(adjustedBackground, normalized.overlayOpacity),
+    overlayStrong: withAlpha(
+      adjustedBackground,
+      Math.min(1, normalized.overlayOpacity + 0.1)
+    ),
     successStrong: adjustValue(paletteHex.success, 6),
     warningStrong: adjustValue(paletteHex.warning, 6),
     dangerStrong: adjustValue(paletteHex.danger, 6),
@@ -689,14 +713,19 @@ export function useTheme() {
     return presets;
   }, [themeState.isCustom, themeMode]);
 
+  const proceduralConfig = useMemo(
+    () => validateProceduralConfig(themeState.proceduralConfig),
+    [themeState.proceduralConfig]
+  );
+
   const animationMultiplier = useMemo(() => {
     if (prefersReducedMotion) return 0;
     return ANIMATION_SCALE[themeState.animation] ?? 1;
   }, [prefersReducedMotion, themeState.animation]);
 
   const procedural = useMemo(
-    () => buildProceduralPalette(paletteHex),
-    [paletteHex]
+    () => buildProceduralPalette(paletteHex, proceduralConfig),
+    [paletteHex, proceduralConfig]
   );
 
   const animationTokens = useMemo(
@@ -922,6 +951,18 @@ export function useTheme() {
     }));
   }, []);
 
+  const setProceduralConfig = useCallback((updates) => {
+    setThemeState((prev) => ({
+      ...prev,
+      proceduralConfig: validateProceduralConfig({
+        ...prev.proceduralConfig,
+        ...(updates || {}),
+      }),
+      activePreset: "custom",
+      isCustom: true,
+    }));
+  }, []);
+
   return {
     theme: themeState.activePreset,
     themeMode,
@@ -939,6 +980,8 @@ export function useTheme() {
     animation: themeState.animation,
     setAnimation,
     animationMultiplier,
+    proceduralConfig,
+    setProceduralConfig,
     proceduralPalette: procedural.tokens,
     motion: {
       easing: animationTokens.curves,
